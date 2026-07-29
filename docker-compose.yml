@@ -38,7 +38,10 @@ services:
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     volumes:
       - db-data:/var/lib/postgresql/data
-      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+      # db/migrations is deliberately NOT mounted into docker-entrypoint-initdb.d.
+      # The app applies migrations itself at startup, tracked in schema_migrations.
+      # Mounting them here too made Postgres create the tables first, after which
+      # the app's migrator failed on "relation already exists".
     # No `ports:` block by design — Postgres is reachable only from `app`
     # over the internal network, never from the host or the internet.
     healthcheck:
