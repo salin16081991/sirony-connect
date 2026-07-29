@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Connect</title>
+    <meta name="description" content="Privacy-first social connection platform." />
+
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#4f46e5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1e1b4b" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <!-- Privacy-first: no third-party origins. Fonts, styles and scripts are
+         all first-party, so loading the app contacts no one but this server. -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="offline-banner" class="banner" hidden>You're offline. Showing cached content.</div>
+
+    <header class="app-header">
+      <div class="brand">
+        <img src="/icons/icon-192.png" alt="" width="32" height="32" class="brand-mark" />
+        <span class="brand-name">Connect</span>
+      </div>
+      <button id="install-btn" class="btn btn-ghost" hidden>Install</button>
+    </header>
+
+    <main class="container">
+      <section class="hero">
+        <h1>Connect</h1>
+        <p class="lede">
+          A privacy-first way to find and keep real connections. No trackers,
+          no third-party scripts, no data sold.
+        </p>
+      </section>
+
+      <section class="card" aria-labelledby="status-h">
+        <h2 id="status-h">Service status</h2>
+        <ul class="status-list">
+          <li>
+            <span class="status-label">Application</span>
+            <span id="app-status" class="pill pill-idle">checking…</span>
+          </li>
+          <li>
+            <span class="status-label">Database</span>
+            <span id="db-status" class="pill pill-idle">checking…</span>
+          </li>
+          <li>
+            <span class="status-label">Installed</span>
+            <span id="pwa-status" class="pill pill-idle">checking…</span>
+          </li>
+        </ul>
+      </section>
+
+      <section class="card card-muted">
+        <h2>Features are not built yet</h2>
+        <p>
+          This is the installable application shell — routing, offline support
+          and the service worker are in place. The product features come from
+          the PRD and land on top of this.
+        </p>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>Self-hosted · No analytics · No third-party requests</p>
+    </footer>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

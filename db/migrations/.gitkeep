@@ -1,0 +1,2 @@
+# Schema files placed here run once, in filename order, on first database init.
+# The schema itself follows from the PRD and is not yet written.

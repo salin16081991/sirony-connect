@@ -1,0 +1,60 @@
+name: sirony-connect
+
+services:
+  app:
+    build:
+      context: .
+      target: runtime
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://connect.sirony.in}
+      TRUST_PROXY: "true"
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    ports:
+      # Loopback only. TLS is terminated by the host reverse proxy, which
+      # forwards connect.sirony.in to this port. Never bind 0.0.0.0 here.
+      - "127.0.0.1:${HOST_PORT:-8097}:3000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - internal
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Scrypt password hashing for stored roles, and strict client auth.
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    # No `ports:` block by design — Postgres is reachable only from `app`
+    # over the internal network, never from the host or the internet.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - internal
+
+volumes:
+  db-data:
+
+networks:
+  internal:
+    driver: bridge

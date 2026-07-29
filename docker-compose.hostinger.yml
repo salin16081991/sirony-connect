@@ -1,0 +1,66 @@
+# Panel-deployable variant of docker-compose.yml, for the Hostinger
+# "Docker projects" Compose screen.
+#
+# Differs from the main file in one way that matters: the panel cannot build
+# from source, so `app` pulls a pre-built image instead of using `build:`.
+# Publish the image first — see .github/workflows/publish.yml.
+#
+# Before pasting into the panel, replace every REPLACE_ME below.
+# Project name in the panel: sirony-connect
+
+services:
+  app:
+    # TODO REPLACE_ME — your GHCR owner, lowercase.
+    image: ghcr.io/REPLACE_ME/sirony-connect:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      LOG_LEVEL: info
+      PUBLIC_ORIGIN: https://connect.sirony.in
+      TRUST_PROXY: "true"
+      # TODO REPLACE_ME — must match POSTGRES_PASSWORD below.
+      DATABASE_URL: postgres://connect:REPLACE_ME_DB_PASSWORD@db:5432/connect
+    ports:
+      # Loopback only. Host nginx terminates TLS and proxies to this port.
+      # Confirm it is free first:  ss -tlnp | grep 8097
+      - "127.0.0.1:8097:3000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - internal
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: connect
+      # TODO REPLACE_ME — generate with: openssl rand -base64 24
+      POSTGRES_PASSWORD: REPLACE_ME_DB_PASSWORD
+      POSTGRES_DB: connect
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    # No `ports:` by design — Postgres stays on the internal network only.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U connect -d connect"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - internal
+
+volumes:
+  db-data:
+
+networks:
+  internal:
+    driver: bridge
