@@ -15,6 +15,8 @@ import { discoveryRoutes } from './routes/discovery.js';
 import { connectionRoutes } from './routes/connections.js';
 import { privacyRoutes } from './routes/privacy.js';
 import { messageRoutes } from './routes/messages.js';
+import { communityRoutes } from './routes/community.js';
+import { moderationRoutes, appealRoutes } from './routes/moderation.js';
 
 const app = Fastify({
   trustProxy: config.trustProxy,
@@ -74,6 +76,9 @@ await app.register(discoveryRoutes);
 await app.register(connectionRoutes);
 await app.register(privacyRoutes);
 await app.register(messageRoutes);
+await app.register(communityRoutes);
+await app.register(moderationRoutes);
+await app.register(appealRoutes);
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
