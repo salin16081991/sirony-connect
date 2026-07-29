@@ -1,15 +1,15 @@
 {
   "id": "/",
-  "name": "Connect",
+  "name": "Sirony Connect",
   "short_name": "Connect",
   "description": "Privacy-first social connection platform.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "theme_color": "#4f46e5",
-  "background_color": "#1e1b4b",
-  "categories": ["social"],
+  "theme_color": "#0a0a0a",
+  "background_color": "#000000",
+  "categories": ["social", "lifestyle"],
   "icons": [
     {
       "src": "/icons/icon-192.png",

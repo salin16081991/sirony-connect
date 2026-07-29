@@ -28,8 +28,8 @@ typecheck: ## Type-check without emitting
 	npm run typecheck
 
 .PHONY: icons
-icons: ## Regenerate the PWA icons into public/icons/
-	node tools/gen-icons.mjs public/icons
+icons: ## Regenerate the PWA icons from assets/mark.png (macOS)
+	./tools/gen-icons.sh
 
 # --- Containers --------------------------------------------------------------
 

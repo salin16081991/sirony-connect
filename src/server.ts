@@ -4,9 +4,15 @@ import Fastify from 'fastify';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
+import cookie from '@fastify/cookie';
 import { config, isProduction } from './config.js';
 import { closePool } from './db.js';
 import { healthRoutes } from './routes/health.js';
+import { authRoutes } from './routes/auth.js';
+import { profileRoutes } from './routes/profiles.js';
+import { discoveryRoutes } from './routes/discovery.js';
+import { connectionRoutes } from './routes/connections.js';
+import { privacyRoutes } from './routes/privacy.js';
 
 const app = Fastify({
   trustProxy: config.trustProxy,
@@ -57,7 +63,14 @@ await app.register(rateLimit, {
   timeWindow: '1 minute',
 });
 
+await app.register(cookie);
+
 await app.register(healthRoutes);
+await app.register(authRoutes);
+await app.register(profileRoutes);
+await app.register(discoveryRoutes);
+await app.register(connectionRoutes);
+await app.register(privacyRoutes);
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
