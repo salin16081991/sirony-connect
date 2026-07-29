@@ -5,6 +5,7 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
 import { config, isProduction } from './config.js';
 import { closePool } from './db.js';
 import { migrate } from './migrate.js';
@@ -17,6 +18,15 @@ import { privacyRoutes } from './routes/privacy.js';
 import { messageRoutes } from './routes/messages.js';
 import { communityRoutes } from './routes/community.js';
 import { moderationRoutes, appealRoutes } from './routes/moderation.js';
+import { mediaRoutes } from './routes/media.js';
+import { socialRoutes } from './routes/social.js';
+import { secretRoutes } from './routes/secret.js';
+import {
+  LIMITS,
+  ensureMediaRoot,
+  loadSigningKey,
+  sweepExpiredMedia,
+} from './lib/media-store.js';
 
 const app = Fastify({
   trustProxy: config.trustProxy,
@@ -69,6 +79,10 @@ await app.register(rateLimit, {
 
 await app.register(cookie);
 
+await app.register(multipart, {
+  limits: { fileSize: LIMITS.videoBytes, files: 1 },
+});
+
 await app.register(healthRoutes);
 await app.register(authRoutes);
 await app.register(profileRoutes);
@@ -79,6 +93,9 @@ await app.register(messageRoutes);
 await app.register(communityRoutes);
 await app.register(moderationRoutes);
 await app.register(appealRoutes);
+await app.register(mediaRoutes);
+await app.register(socialRoutes);
+await app.register(secretRoutes);
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -132,6 +149,20 @@ try {
     info: (msg) => app.log.info(msg),
     error: (msg) => app.log.error(msg),
   });
+  await ensureMediaRoot();
+  await loadSigningKey();
+
+  // Retention is a promise, so expired media is swept on a timer rather than
+  // only when someone happens to look at it.
+  const sweeper = setInterval(
+    () => void sweepExpiredMedia((msg) => app.log.info(msg)).catch((err) =>
+      app.log.error({ err }, 'media sweep failed'),
+    ),
+    15 * 60 * 1000,
+  );
+  sweeper.unref();
+  await sweepExpiredMedia((msg) => app.log.info(msg));
+
   await app.listen({ port: config.port, host: config.host });
 } catch (error) {
   app.log.error({ err: error }, 'failed to start');

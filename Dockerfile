@@ -28,6 +28,9 @@ COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node public ./public
 COPY --chown=node:node db ./db
 COPY --chown=node:node package.json ./
+# Docker seeds a fresh named volume from the image, so creating this with the
+# right ownership here is what lets the unprivileged user write to it.
+RUN mkdir -p /data/media && chown -R node:node /data
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

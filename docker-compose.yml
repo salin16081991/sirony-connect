@@ -16,10 +16,15 @@ services:
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://connect.sirony.in}
       TRUST_PROXY: "true"
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      MEDIA_ROOT: /data/media
     ports:
       # Loopback only. TLS is terminated by the host reverse proxy, which
       # forwards connect.sirony.in to this port. Never bind 0.0.0.0 here.
       - "127.0.0.1:${HOST_PORT:-8097}:3000"
+    volumes:
+      # Uploads live outside the served static root; access is only ever
+      # granted through a short-lived signed ticket.
+      - media-data:/data/media
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -57,6 +62,7 @@ services:
 
 volumes:
   db-data:
+  media-data:
 
 networks:
   internal:
