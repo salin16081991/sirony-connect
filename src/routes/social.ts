@@ -4,6 +4,7 @@ import { pool } from '../db.js';
 import { audit } from '../lib/audit.js';
 import { requireAuth } from '../lib/auth-guard.js';
 import { LIMITS } from '../lib/media-store.js';
+import { parseYouTubeUrl, thumbnailUrl } from '../lib/youtube.js';
 
 export async function socialRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireAuth);
@@ -22,17 +23,20 @@ export async function socialRoutes(app: FastifyInstance): Promise<void> {
             mediaId: { type: 'string', format: 'uuid' },
             kind: { type: 'string', enum: ['story', 'reel'] },
             caption: { type: 'string', maxLength: 500 },
+            // Reels only. The video lives on the author's YouTube channel.
+            videoUrl: { type: 'string', maxLength: 500 },
           },
         },
       },
       config: { rateLimit: { max: 30, timeWindow: '1 hour' } },
     },
     async (request, reply) => {
-      const { profileId, mediaId, kind, caption } = request.body as {
+      const { profileId, mediaId, kind, caption, videoUrl } = request.body as {
         profileId: string;
         mediaId?: string;
         kind: 'story' | 'reel';
         caption?: string;
+        videoUrl?: string;
       };
       const userId = request.user!.id;
 
@@ -41,6 +45,18 @@ export async function socialRoutes(app: FastifyInstance): Promise<void> {
         userId,
       ]);
       if (!owned.rowCount) return reply.code(404).send({ error: 'not_found' });
+
+      // A reel is a link to the author's own YouTube upload; nothing is stored
+      // here but the identifier. A story is uploaded media. Never both.
+      let video = null;
+      if (kind === 'reel') {
+        if (!videoUrl) return reply.code(400).send({ error: 'video_url_required' });
+        video = parseYouTubeUrl(videoUrl);
+        if (!video) return reply.code(400).send({ error: 'invalid_youtube_url' });
+        if (mediaId) return reply.code(400).send({ error: 'reels_do_not_take_uploads' });
+      } else if (videoUrl) {
+        return reply.code(400).send({ error: 'stories_do_not_take_links' });
+      }
 
       if (mediaId) {
         const media = await pool.query('SELECT 1 FROM media_objects WHERE id = $1 AND owner_id = $2', [
@@ -55,11 +71,19 @@ export async function socialRoutes(app: FastifyInstance): Promise<void> {
       const interval =
         kind === 'story' ? `${LIMITS.storyHours} hours` : `${LIMITS.reelDays} days`;
 
-      const { rows } = await pool.query<{ id: string; expires_at: string }>(
-        `INSERT INTO posts (profile_id, media_id, kind, caption, expires_at)
-         VALUES ($1, $2, $3, $4, now() + $5::interval)
+      const { rows } = await pool.query<{ id: string; expiresAt: string }>(
+        `INSERT INTO posts (profile_id, media_id, kind, caption, expires_at, video_url, video_id)
+         VALUES ($1, $2, $3, $4, now() + $5::interval, $6, $7)
          RETURNING id, expires_at AS "expiresAt"`,
-        [profileId, mediaId ?? null, kind, caption ?? null, interval],
+        [
+          profileId,
+          mediaId ?? null,
+          kind,
+          caption ?? null,
+          interval,
+          video?.canonicalUrl ?? null,
+          video?.videoId ?? null,
+        ],
       );
 
       if (mediaId) {
@@ -86,6 +110,7 @@ export async function socialRoutes(app: FastifyInstance): Promise<void> {
 
     const { rows } = await pool.query(
       `SELECT p.id, p.kind, p.caption, p.media_id AS "mediaId",
+              p.video_url AS "videoUrl", p.video_id AS "videoId",
               p.created_at AS "createdAt", p.expires_at AS "expiresAt",
               pr.id AS "profileId", pr.display_name AS "displayName",
               (pr.user_id = $1) AS mine,
@@ -111,8 +136,25 @@ export async function socialRoutes(app: FastifyInstance): Promise<void> {
         ORDER BY p.created_at DESC LIMIT 100`,
       [userId, kind],
     );
-    return { posts: rows };
+    return {
+      posts: rows.map((row) => ({
+        ...row,
+        // Supplied so the client can offer a thumbnail, but the client decides
+        // whether to load it: fetching it contacts Google.
+        thumbnailUrl: row.videoId ? thumbnailUrl(row.videoId) : null,
+      })),
+    };
   });
+
+  /**
+   * Where to send someone who wants to post a reel. They upload on YouTube,
+   * then paste the resulting link back here.
+   */
+  app.get('/api/reels/upload-target', async () => ({
+    uploadUrl: 'https://www.youtube.com/upload',
+    instructions:
+      'Upload the video to your own YouTube channel, then paste the link here. Sirony Connect stores only the link — the video stays yours and deleting it on YouTube removes it here too.',
+  }));
 
   app.delete('/api/posts/:id', async (request, reply) => {
     const { rowCount } = await pool.query(
