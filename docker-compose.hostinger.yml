@@ -5,13 +5,14 @@
 # from source, so `app` pulls a pre-built image instead of using `build:`.
 # Publish the image first — see .github/workflows/publish.yml.
 #
-# Before pasting into the panel, replace every REPLACE_ME below.
+# Before pasting into the panel, replace CHANGE_ME_DB_PASSWORD in BOTH places
+# below with the same value. Generate one with:  openssl rand -base64 24
+#
 # Project name in the panel: sirony-connect
 
 services:
   app:
-    # TODO REPLACE_ME — your GHCR owner, lowercase.
-    image: ghcr.io/REPLACE_ME/sirony-connect:latest
+    image: ghcr.io/salin16081991/sirony-connect:latest
     restart: unless-stopped
     depends_on:
       db:
@@ -22,8 +23,8 @@ services:
       LOG_LEVEL: info
       PUBLIC_ORIGIN: https://connect.sirony.in
       TRUST_PROXY: "true"
-      # TODO REPLACE_ME — must match POSTGRES_PASSWORD below.
-      DATABASE_URL: postgres://connect:REPLACE_ME_DB_PASSWORD@db:5432/connect
+      # Must match POSTGRES_PASSWORD below.
+      DATABASE_URL: postgres://connect:CHANGE_ME_DB_PASSWORD@db:5432/connect
     ports:
       # Loopback only. Host nginx terminates TLS and proxies to this port.
       # Confirm it is free first:  ss -tlnp | grep 8097
@@ -40,8 +41,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: connect
-      # TODO REPLACE_ME — generate with: openssl rand -base64 24
-      POSTGRES_PASSWORD: REPLACE_ME_DB_PASSWORD
+      # Same value as in DATABASE_URL above.
+      POSTGRES_PASSWORD: CHANGE_ME_DB_PASSWORD
       POSTGRES_DB: connect
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     volumes:
