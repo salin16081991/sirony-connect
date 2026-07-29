@@ -14,6 +14,7 @@ import { profileRoutes } from './routes/profiles.js';
 import { discoveryRoutes } from './routes/discovery.js';
 import { connectionRoutes } from './routes/connections.js';
 import { privacyRoutes } from './routes/privacy.js';
+import { messageRoutes } from './routes/messages.js';
 
 const app = Fastify({
   trustProxy: config.trustProxy,
@@ -72,6 +73,7 @@ await app.register(profileRoutes);
 await app.register(discoveryRoutes);
 await app.register(connectionRoutes);
 await app.register(privacyRoutes);
+await app.register(messageRoutes);
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -102,8 +104,6 @@ app.setNotFoundHandler((request, reply) => {
   }
   return reply.code(404).send({ error: 'not_found' });
 });
-
-// Domain routes are not scaffolded yet — they follow from the PRD.
 
 const shutdown = async (signal: string): Promise<void> => {
   app.log.info({ signal }, 'shutting down');

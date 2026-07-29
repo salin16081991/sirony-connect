@@ -464,6 +464,22 @@ async function discoverView(profileId) {
   mount(
     el('h1', { text: "Today's introductions" }),
     el('p', { class: 'muted small', text: `${data.explanation} Up to ${data.dailyLimit} a day, so each one gets your attention.` }),
+    el('div', { class: 'row' }, [
+      el('button', {
+        class: 'btn btn-ghost btn-sm',
+        type: 'button',
+        text: 'Undo last pass',
+        onClick: async () => {
+          try {
+            const { restored } = await api.post('/api/introductions/backtrack');
+            toast(`${restored} is back`);
+            await refresh();
+          } catch (err) {
+            toast(err.code === 'nothing_to_undo' ? 'Nothing to undo' : messageFor(err));
+          }
+        },
+      }),
+    ]),
     ...(pending.length
       ? pending.map((intro) => introductionCard(profile.id, intro, refresh))
       : [
@@ -479,36 +495,198 @@ async function discoverView(profileId) {
 
 /* --------------------------------------------------------------- matches -- */
 
+/** "4h 12m left" — the opening window, shown plainly rather than as a timer. */
+function timeLeft(iso) {
+  const ms = new Date(iso).getTime() - Date.now();
+  if (ms <= 0) return null;
+  const hours = Math.floor(ms / 3_600_000);
+  const minutes = Math.floor((ms % 3_600_000) / 60_000);
+  return hours > 0 ? `${hours}h ${minutes}m left` : `${minutes}m left`;
+}
+
+function matchStatus(m) {
+  if (m.expired) return { text: 'Expired', kind: 'pill' };
+  if (m.openedAt) return { text: `${m.messageCount} message${m.messageCount === 1 ? '' : 's'}`, kind: 'pill pill-ok' };
+  if (m.myOpeningMove) return { text: `Your move · ${timeLeft(m.expiresAt) ?? 'expiring'}`, kind: 'pill pill-accent' };
+  return { text: `Their move · ${timeLeft(m.expiresAt) ?? 'expiring'}`, kind: 'pill pill-warn' };
+}
+
 async function matchesView() {
   const { matches } = await api.get('/api/matches');
   mount(
     el('h1', { text: 'Matches' }),
+    el('p', {
+      class: 'muted small',
+      text: 'A new match has 24 hours to be opened. Whoever was liked first makes the opening move; after that either of you can reply.',
+    }),
     ...(matches.length
-      ? matches.map((m) =>
-          card([
-            el('h3', { text: m.displayName }),
+      ? matches.map((m) => {
+          const status = matchStatus(m);
+          return card([
+            el('div', { class: 'row', style: 'justify-content:space-between;align-items:baseline' }, [
+              el('h3', { text: m.displayName, style: 'margin:0' }),
+              el('span', { class: status.kind, text: status.text }),
+            ]),
             m.headline ? el('p', { text: m.headline }) : null,
             m.locality ? el('p', { class: 'small muted', text: m.locality }) : null,
-            el('p', { class: 'small muted', text: `Matched ${new Date(m.createdAt).toLocaleDateString()}` }),
             el('div', { class: 'divider' }),
-            el('p', { class: 'small muted', text: 'Messaging is not enabled yet in this build.' }),
-            el('button', {
-              class: 'btn btn-danger btn-sm',
-              type: 'button',
-              text: 'Block',
-              onClick: async () => {
-                if (!confirmAction('Block this person? The match will be closed.')) return;
-                await api.post('/api/blocks', { profileId: m.profileId });
-                toast('Blocked');
-                route();
-              },
-            }),
-          ]),
-        )
+            el('div', { class: 'row' }, [
+              m.expired
+                ? el('span', { class: 'small muted', text: 'This match expired unopened.' })
+                : el('a', {
+                    class: 'btn btn-sm',
+                    href: `#/chat/${m.id}`,
+                    text: m.openedAt ? 'Open chat' : m.myOpeningMove ? 'Say something' : 'View',
+                  }),
+              m.canExtend && !m.expired && !m.myOpeningMove
+                ? el('button', {
+                    class: 'btn btn-ghost btn-sm',
+                    type: 'button',
+                    text: 'Extend 24h',
+                    onClick: async () => {
+                      try {
+                        await api.post(`/api/matches/${m.id}/extend`);
+                        toast('Extended by 24 hours');
+                        route();
+                      } catch (err) {
+                        toast(messageFor(err));
+                      }
+                    },
+                  })
+                : null,
+              el('button', {
+                class: 'btn btn-danger btn-sm',
+                type: 'button',
+                text: 'Block',
+                onClick: async () => {
+                  if (!confirmAction('Block this person? The match will be closed.')) return;
+                  await api.post('/api/blocks', { profileId: m.profileId });
+                  toast('Blocked');
+                  route();
+                },
+              }),
+            ]),
+          ]);
+        })
       : [card([el('div', { class: 'empty' }, [
           el('p', { text: 'No matches yet.' }),
           el('p', { class: 'small', text: 'A match happens only when interest is mutual.' }),
         ])])]),
+  );
+}
+
+/* ------------------------------------------------------------------ chat -- */
+
+async function chatView(matchId) {
+  let data;
+  try {
+    data = await api.get(`/api/matches/${matchId}/messages`);
+  } catch (err) {
+    mount(el('h1', { text: 'Chat' }), card([el('p', { text: messageFor(err) })]));
+    return;
+  }
+
+  const { match, myProfileId, messages } = data;
+
+  const thread = el('div', { class: 'stack' },
+    messages.length
+      ? messages.map((msg) =>
+          el('div', { class: `bubble ${msg.senderProfileId === myProfileId ? 'bubble-mine' : ''}`.trim() }, [
+            el('p', { text: msg.body, style: 'margin:0' }),
+            el('span', {
+              class: 'bubble-time',
+              text: new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            }),
+          ]),
+        )
+      : [el('p', { class: 'muted small', text: 'No messages yet.' })],
+  );
+
+  const input = el('textarea', { id: 'composer', maxlength: '4000', placeholder: 'Write a message' });
+  const send = el('button', { class: 'btn', type: 'submit', text: 'Send' });
+
+  const composer = match.canSend
+    ? el('form', {
+        onSubmit: async (event) => {
+          event.preventDefault();
+          const body = input.value.trim();
+          if (!body) return;
+          send.disabled = true;
+          try {
+            await api.post(`/api/matches/${matchId}/messages`, { body });
+            input.value = '';
+            await chatView(matchId);
+          } catch (err) {
+            toast(messageFor(err));
+          } finally {
+            send.disabled = false;
+          }
+        },
+      }, [input, el('div', { class: 'row row-end', style: 'margin-top:.6rem' }, [send])])
+    : null;
+
+  let notice = null;
+  if (match.expired) {
+    notice = card([
+      el('h3', { text: 'This match expired' }),
+      el('p', { text: 'Nobody opened the conversation within 24 hours, so it closed. Fewer, more deliberate connections is the point.' }),
+    ], 'card-accent');
+  } else if (match.awaitingOther) {
+    notice = card([
+      el('h3', { text: `Waiting for ${match.otherName}` }),
+      el('p', { text: `They were liked first, so the opening move is theirs. ${timeLeft(match.expiresAt) ?? 'Expiring shortly'}.` }),
+      match.canExtend
+        ? el('button', {
+            class: 'btn btn-ghost btn-sm',
+            type: 'button',
+            text: 'Give them another 24 hours',
+            onClick: async () => {
+              await api.post(`/api/matches/${matchId}/extend`);
+              toast('Extended');
+              await chatView(matchId);
+            },
+          })
+        : null,
+    ], 'card-accent');
+  } else if (!match.openedAt) {
+    notice = card([
+      el('h3', { text: 'Your opening move' }),
+      el('p', { text: `You have ${timeLeft(match.expiresAt) ?? 'a moment'} to start this conversation.` }),
+    ], 'card-accent');
+  }
+
+  const ttl = el('select', { id: 'ttl' });
+  for (const [value, label] of [
+    ['', 'Keep messages'],
+    ['3600', 'Disappear after 1 hour'],
+    ['86400', 'Disappear after 24 hours'],
+    ['604800', 'Disappear after 7 days'],
+  ]) {
+    ttl.append(el('option', {
+      value,
+      text: label,
+      selected: String(match.messageTtlSeconds ?? '') === value,
+    }));
+  }
+  ttl.addEventListener('change', async () => {
+    await api.put(`/api/matches/${matchId}/retention`, {
+      ttlSeconds: ttl.value ? Number(ttl.value) : null,
+    });
+    toast('Retention updated');
+  });
+
+  mount(
+    el('div', { class: 'row', style: 'justify-content:space-between;align-items:center' }, [
+      el('h1', { text: match.otherName, style: 'margin:0' }),
+      el('a', { class: 'btn btn-ghost btn-sm', href: '#/matches', text: 'Back' }),
+    ]),
+    notice,
+    card([thread, composer ? el('div', { class: 'divider' }) : null, composer]),
+    card([
+      el('h2', { text: 'Message retention' }),
+      el('p', { text: 'Applies to both sides of this conversation, and to new messages only.' }),
+      ttl,
+    ]),
   );
 }
 
@@ -647,6 +825,10 @@ async function route() {
       case 'matches':
         syncTabs('matches');
         await matchesView();
+        break;
+      case 'chat':
+        syncTabs('matches');
+        await chatView(parts[1]);
         break;
       case 'privacy':
         syncTabs('privacy');

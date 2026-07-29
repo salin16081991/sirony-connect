@@ -46,6 +46,11 @@ const MESSAGES = {
   age_range_inverted: 'The maximum age must be at least the minimum age.',
   not_found: 'That is no longer available.',
   cannot_like_self: 'You cannot connect with your own profile.',
+  match_expired: 'This match expired before anyone opened it.',
+  not_your_opening_move: 'The opening move belongs to the other person.',
+  already_extended: 'This match has already been extended once.',
+  already_open: 'This conversation is already open.',
+  nothing_to_undo: 'There is nothing to undo.',
 };
 
 export function messageFor(error) {

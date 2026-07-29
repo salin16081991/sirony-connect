@@ -100,10 +100,14 @@ export async function connectionRoutes(app: FastifyInstance): Promise<void> {
         if (reciprocal.rowCount) {
           // The CHECK constraint keeps one row per pair, so order the ids.
           const [a, b] = [fromProfileId, toProfileId].sort();
+          // The reciprocal like already existed, so the *current* actor is the
+          // one who was pursued first. They hold the opening move.
           await client.query(
-            `INSERT INTO matches (profile_a_id, profile_b_id) VALUES ($1, $2)
+            `INSERT INTO matches
+               (profile_a_id, profile_b_id, first_move_profile_id, expires_at)
+             VALUES ($1, $2, $3, now() + interval '24 hours')
              ON CONFLICT DO NOTHING`,
-            [a, b],
+            [a, b, fromProfileId],
           );
           matched = true;
         }
@@ -136,10 +140,49 @@ export async function connectionRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
+  /**
+   * Undo the most recent pass, Bumble's Backtrack. Bounded to five minutes so
+   * it stays a correction for a mis-tap rather than a way to re-browse people
+   * who were already declined.
+   */
+  app.post('/api/introductions/backtrack', async (request, reply) => {
+    const { rows } = await pool.query<{ candidate_id: string; display_name: string }>(
+      `UPDATE introductions i
+          SET acted_at = NULL
+         FROM profiles p, profiles c
+        WHERE i.profile_id = p.id
+          AND p.user_id = $1
+          AND c.id = i.candidate_id
+          AND i.acted_at = (
+            SELECT max(i2.acted_at) FROM introductions i2
+              JOIN profiles p2 ON p2.id = i2.profile_id
+             WHERE p2.user_id = $1
+               AND i2.acted_at > now() - interval '5 minutes'
+               -- A pass can be undone; a like cannot, since the other person
+               -- may already have been shown the interest.
+               AND NOT EXISTS (
+                 SELECT 1 FROM likes l
+                  WHERE l.from_profile_id = i2.profile_id
+                    AND l.to_profile_id = i2.candidate_id
+               )
+          )
+        RETURNING i.candidate_id, c.display_name`,
+      [request.user!.id],
+    );
+    if (!rows.length) return reply.code(404).send({ error: 'nothing_to_undo' });
+    return { restored: rows[0]!.display_name };
+  });
+
   app.get('/api/matches', async (request) => {
     const { rows } = await pool.query(
       `SELECT m.id,
               m.created_at AS "createdAt",
+              m.expires_at AS "expiresAt",
+              m.opened_at  AS "openedAt",
+              (m.opened_at IS NULL AND m.expires_at < now()) AS expired,
+              (m.first_move_profile_id = mine.id) AS "myOpeningMove",
+              (m.opened_at IS NULL AND m.extended_at IS NULL) AS "canExtend",
+              (SELECT count(*) FROM messages msg WHERE msg.match_id = m.id)::int AS "messageCount",
               other.id AS "profileId",
               other.display_name AS "displayName",
               other.headline,
