@@ -26,12 +26,30 @@ Two containers, matching the pattern used by the sibling `sirony-*` projects:
 TLS terminates at host nginx, which proxies `connect.sirony.in` to the
 loopback port. See [`deploy/nginx/`](deploy/nginx/).
 
+## URLs
+
+| Context | URL |
+| ------- | --- |
+| Public  | **https://connect.sirony.in** |
+| Internal bind | `127.0.0.1:8097` — nginx proxies the domain to this |
+
+`127.0.0.1:8097` is never browsed directly in production. It is deliberately
+loopback-only: binding `0.0.0.0` would expose the app to the internet without
+TLS. Change it only in `HOST_PORT`, and update the nginx vhost to match.
+
+To reach the app at `connect.sirony.in` on your own machine while developing,
+point the hostname at localhost — DNS resolves it to the VPS otherwise:
+
+```bash
+echo "127.0.0.1 connect.sirony.in" | sudo tee -a /etc/hosts
+```
+
 ## Local run
 
 ```bash
 cp .env.example .env          # then set POSTGRES_PASSWORD
 docker compose up --build
-curl localhost:8097/healthz
+curl http://127.0.0.1:8097/healthz
 ```
 
 ## Deploy
