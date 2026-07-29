@@ -7,6 +7,7 @@ import fastifyStatic from '@fastify/static';
 import cookie from '@fastify/cookie';
 import { config, isProduction } from './config.js';
 import { closePool } from './db.js';
+import { migrate } from './migrate.js';
 import { healthRoutes } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
 import { profileRoutes } from './routes/profiles.js';
@@ -120,6 +121,12 @@ process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
 
 try {
+  // Schema first: refuse to serve rather than come up against a database the
+  // app cannot actually use.
+  await migrate({
+    info: (msg) => app.log.info(msg),
+    error: (msg) => app.log.error(msg),
+  });
   await app.listen({ port: config.port, host: config.host });
 } catch (error) {
   app.log.error({ err: error }, 'failed to start');
