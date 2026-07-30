@@ -51,6 +51,12 @@ const MESSAGES = {
   already_extended: 'This match has already been extended once.',
   already_open: 'This conversation is already open.',
   nothing_to_undo: 'There is nothing to undo.',
+  video_must_be_a_link: 'Upload video to YouTube and paste the link instead.',
+  invalid_youtube_url: 'That does not look like a YouTube link.',
+  photo_or_link_not_both: 'Choose either a photo or a link, not both.',
+  file_too_large: 'That file is too large. Photos up to 8MB.',
+  unsupported_type: 'Only JPEG, PNG and WebP photos are supported.',
+  video_url_required: 'Reels need a YouTube link.',
 };
 
 export function messageFor(error) {

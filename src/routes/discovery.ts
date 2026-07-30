@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { pool } from '../db.js';
 import { requireAuth } from '../lib/auth-guard.js';
+import { signMediaToken } from '../lib/media-store.js';
 
 /** Free tier: a small number of curated introductions, not an infinite deck. */
 const DAILY_INTRODUCTIONS = 5;
@@ -124,6 +125,7 @@ export async function discoveryRoutes(app: FastifyInstance): Promise<void> {
               c.display_name AS "displayName",
               c.headline, c.bio, c.locality, c.interests,
               date_part('year', age(cu.date_of_birth))::int AS age,
+              c.photo_media_id AS "photoMediaId",
               i.acted_at AS "actedAt",
               ARRAY(
                 SELECT cm.mode FROM profile_modes cm
@@ -146,7 +148,14 @@ export async function discoveryRoutes(app: FastifyInstance): Promise<void> {
     );
 
     return {
-      introductions: rows,
+      // Each card gets its own short-lived ticket, so a photo URL copied out
+      // of the page stops working within minutes.
+      introductions: rows.map((row) => ({
+        ...row,
+        photoUrl: row.photoMediaId
+          ? `/api/media/${row.photoMediaId}/file?t=${signMediaToken(row.photoMediaId, userId)}`
+          : null,
+      })),
       dailyLimit: DAILY_INTRODUCTIONS,
       // Surfaced so the UI can explain *why* someone appeared, per PRD §5.2:
       // agreements and questions, never an authoritative percentage.

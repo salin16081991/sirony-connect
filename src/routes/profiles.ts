@@ -34,6 +34,7 @@ const profileBody = {
       items: { type: 'string', maxLength: 40 },
     },
     visibility: { type: 'string', enum: [...VISIBILITIES] },
+    photoMediaId: { type: ['string', 'null'], format: 'uuid' },
     ageMin: { type: 'integer', minimum: 18, maximum: 120 },
     ageMax: { type: 'integer', minimum: 18, maximum: 120 },
     modes: {
@@ -53,6 +54,7 @@ interface ProfileBody {
   locality?: string;
   interests?: string[];
   visibility?: string;
+  photoMediaId?: string | null;
   ageMin?: number;
   ageMax?: number;
   modes?: string[];
@@ -65,6 +67,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
     const { rows } = await pool.query(
       `SELECT p.id, p.kind, p.display_name AS "displayName", p.headline, p.bio,
               p.locality, p.interests, p.visibility,
+              p.photo_media_id AS "photoMediaId",
               p.age_min AS "ageMin", p.age_max AS "ageMax",
               COALESCE(
                 (SELECT array_agg(m.mode) FROM profile_modes m WHERE m.profile_id = p.id),
@@ -95,8 +98,8 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
       const { rows } = await client.query<{ id: string }>(
         `INSERT INTO profiles
            (user_id, kind, display_name, headline, bio, locality, interests,
-            visibility, age_min, age_max)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            visibility, age_min, age_max, photo_media_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (user_id, kind) DO UPDATE SET
            display_name = EXCLUDED.display_name,
            headline     = EXCLUDED.headline,
@@ -106,6 +109,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
            visibility   = EXCLUDED.visibility,
            age_min      = EXCLUDED.age_min,
            age_max      = EXCLUDED.age_max,
+           photo_media_id = EXCLUDED.photo_media_id,
            updated_at   = now()
          RETURNING id`,
         [
@@ -119,6 +123,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
           body.visibility ?? 'invisible',
           ageMin,
           ageMax,
+          body.photoMediaId ?? null,
         ],
       );
       const profileId = rows[0]!.id;

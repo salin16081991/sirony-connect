@@ -5,7 +5,7 @@
  * data is left sitting in CacheStorage on a shared or lost device.
  */
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL_CACHE = `connect-shell-${VERSION}`;
 
 const SHELL_ASSETS = [
@@ -16,6 +16,7 @@ const SHELL_ASSETS = [
   '/js/app.js',
   '/js/api.js',
   '/js/ui.js',
+  '/js/swipe.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

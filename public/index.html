@@ -2,42 +2,65 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- viewport-fit=cover lets the layout reach under the notch; the CSS
+         puts it back with env(safe-area-inset-*). user-scalable=no is
+         deliberate for an app-shell PWA, and every control meets the 48px
+         touch target so pinch-zoom is not needed for legibility. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
     <title>Sirony Connect</title>
     <meta name="description" content="Privacy-first social connection platform." />
 
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content="#0b0b0f" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f6f6f9" media="(prefers-color-scheme: light)" />
     <link rel="icon" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
-    <!-- Privacy-first: every asset is first-party. Loading this app contacts
-         no origin other than this server. -->
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div id="offline-banner" class="banner" hidden>Offline — showing cached content.</div>
-
     <header class="app-header">
-      <a class="brand" href="#/">
-        <img src="/icons/icon-192.png" alt="" width="30" height="30" class="brand-mark" />
+      <a class="brand" href="#/discover">
+        <img src="/icons/icon-192.png" alt="" width="28" height="28" class="brand-mark" />
         <span class="brand-name">Sirony<span class="brand-accent">Connect</span></span>
       </a>
-      <button id="install-btn" class="btn btn-ghost btn-sm" hidden>Install</button>
+      <div class="row">
+        <button id="install-btn" class="btn btn-ghost btn-sm" hidden>Install</button>
+      </div>
     </header>
 
-    <main id="view" class="container" aria-live="polite">
+    <main id="view" class="view" aria-live="polite">
       <p class="muted">Loading…</p>
     </main>
 
     <nav id="tabbar" class="tabbar" hidden>
-      <a href="#/discover" data-tab="discover">Discover</a>
-      <a href="#/matches" data-tab="matches">Matches</a>
-      <a href="#/profiles" data-tab="profiles">Profiles</a>
-      <a href="#/privacy" data-tab="privacy">Privacy</a>
+      <a href="#/discover" data-tab="discover" aria-label="Discover">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="13" height="16" rx="2.5"/><path d="M18.5 7.5 21 9v9a2 2 0 0 1-2 2h-1"/></svg>
+        <span>Discover</span>
+      </a>
+      <a href="#/matches" data-tab="matches" aria-label="Matches">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.9 9.9 0 0 1-3.9-.8L3 21l1.9-4.6A8.3 8.3 0 0 1 3.6 11.5 8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4Z"/></svg>
+        <span>Matches</span>
+      </a>
+      <a href="#/feed" data-tab="feed" aria-label="Feed">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m10.5 9.5 4.5 2.6-4.5 2.6z"/></svg>
+        <span>Feed</span>
+      </a>
+      <a href="#/profiles" data-tab="profiles" aria-label="Profile">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+        <span>Profile</span>
+      </a>
+      <a href="#/privacy" data-tab="privacy" aria-label="Privacy">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 5 6v6c0 4.3 2.9 7.6 7 8.8 4.1-1.2 7-4.5 7-8.8V6Z"/><path d="M9.5 12.2l1.8 1.8 3.4-3.6"/></svg>
+        <span>Privacy</span>
+      </a>
     </nav>
 
     <div id="toast" class="toast" role="status" hidden></div>
