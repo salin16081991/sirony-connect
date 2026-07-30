@@ -55,7 +55,11 @@ export async function socialRoutes(app: FastifyInstance): Promise<void> {
         if (!video) return reply.code(400).send({ error: 'invalid_youtube_url' });
         if (mediaId) return reply.code(400).send({ error: 'reels_do_not_take_uploads' });
       } else if (videoUrl) {
-        return reply.code(400).send({ error: 'stories_do_not_take_links' });
+        // A story may also be a YouTube link. What it may never be is an
+        // uploaded video — see the upload route.
+        video = parseYouTubeUrl(videoUrl);
+        if (!video) return reply.code(400).send({ error: 'invalid_youtube_url' });
+        if (mediaId) return reply.code(400).send({ error: 'photo_or_link_not_both' });
       }
 
       if (mediaId) {

@@ -8,20 +8,25 @@ export const MEDIA_ROOT = process.env['MEDIA_ROOT'] ?? '/data/media';
 
 export const LIMITS = {
   photoBytes: 8 * 1024 * 1024,
-  videoBytes: 40 * 1024 * 1024,
+  /**
+   * Upload ceiling for the whole service. Video is not uploadable at all —
+   * moving pictures go to the author's own YouTube channel and only the link
+   * is stored — so this is just the photo limit with a little headroom.
+   */
+  uploadBytes: 8 * 1024 * 1024,
   storyHours: 24,
   reelDays: 30,
 } as const;
 
-const ALLOWED = new Map<string, 'photo' | 'video'>([
+// Photos only. `media_objects.kind` still permits 'video' so historical rows
+// remain valid, but nothing new can be written as one.
+const ALLOWED = new Map<string, 'photo'>([
   ['image/jpeg', 'photo'],
   ['image/png', 'photo'],
   ['image/webp', 'photo'],
-  ['video/mp4', 'video'],
-  ['video/webm', 'video'],
 ]);
 
-export function kindForMime(mime: string): 'photo' | 'video' | null {
+export function kindForMime(mime: string): 'photo' | null {
   return ALLOWED.get(mime) ?? null;
 }
 

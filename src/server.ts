@@ -80,7 +80,7 @@ await app.register(rateLimit, {
 await app.register(cookie);
 
 await app.register(multipart, {
-  limits: { fileSize: LIMITS.videoBytes, files: 1 },
+  limits: { fileSize: LIMITS.uploadBytes, files: 1 },
 });
 
 await app.register(healthRoutes);

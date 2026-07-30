@@ -21,12 +21,18 @@ export async function mediaRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/media', { config: { rateLimit: { max: 40, timeWindow: '1 hour' } } },
     async (request, reply) => {
       const file = await request.file({
-        limits: { fileSize: LIMITS.videoBytes, files: 1 },
+        limits: { fileSize: LIMITS.uploadBytes, files: 1 },
       });
       if (!file) return reply.code(400).send({ error: 'no_file' });
 
       const kind = kindForMime(file.mimetype);
-      if (!kind) return reply.code(415).send({ error: 'unsupported_type' });
+      // Video uploads are refused outright — post it to YouTube and share the
+      // link instead. The error name says so, so the client can explain.
+      if (!kind) {
+        return reply
+          .code(415)
+          .send({ error: file.mimetype.startsWith('video/') ? 'video_must_be_a_link' : 'unsupported_type' });
+      }
 
       const oneTime = (request.query as { oneTime?: string }).oneTime === 'true';
       const ttl = (request.query as { ttl?: string }).ttl;
