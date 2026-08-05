@@ -27,8 +27,8 @@ services:
       DATABASE_URL: postgres://connect:CHANGE_ME_DB_PASSWORD@db:5432/connect
     ports:
       # Loopback only. Host nginx terminates TLS and proxies to this port.
-      # Confirm it is free first:  ss -tlnp | grep 8097
-      - "127.0.0.1:8097:3000"
+      # Confirm it is free first:  ss -tlnp | grep 8300
+      - "127.0.0.1:8300:3000"
     security_opt:
       - no-new-privileges:true
     cap_drop:

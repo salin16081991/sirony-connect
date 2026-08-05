@@ -6,13 +6,28 @@ alongside the other `sirony-*` projects on the Hostinger VPS
 
 ## Status
 
-The **infrastructure and PWA shell are complete**. The **product features are
-not** — no domain model, entities, or feature endpoints exist yet, because
-those come from the PRD (`privacy-first-social-connection-platform-prd.md`),
-which has not been readable from this machine.
+Live at **https://connect.sirony.in**.
 
-What runs today: a Fastify server with health endpoints and a Postgres
-connection, serving an installable, offline-capable PWA shell.
+Built and deployed:
+
+- adult-gated accounts, scrypt passwords, hashed session tokens
+- purpose-separated profiles (dating / friends / activities / networking)
+  with per-profile visibility, defaulting to invisible
+- curated daily introductions, presented as a swipe deck
+- mutual matching, a 24-hour opening window, one extension, backtrack
+- messaging with per-conversation disappearing messages
+- photos with signed short-lived tickets, per-viewer watermark text,
+  one-time view, and a retention sweeper
+- stories (24h) and reels (30d); reels and story video are YouTube links,
+  never uploads
+- private hearts and follower counts, QR connect
+- clubs, events, compatibility radar
+- moderation console with triage, enforcement and appeals
+- E2E secret chat — **not security reviewed**, see `src/routes/secret.ts`
+- per-type consent, data export, pause and delete
+
+Not built: ID/liveness verification (needs a KYC vendor), voice lounges,
+video calls, AI coaching, Couple Mode.
 
 ## Topology
 
@@ -20,7 +35,7 @@ Two containers, matching the pattern used by the sibling `sirony-*` projects:
 
 | Service | Image             | Exposure                                  |
 | ------- | ----------------- | ----------------------------------------- |
-| `app`   | built from source | `127.0.0.1:8097` only — never `0.0.0.0`   |
+| `app`   | built from source | `127.0.0.1:8300` only — never `0.0.0.0`   |
 | `db`    | `postgres:17`     | internal network only, no host port       |
 
 TLS terminates at host nginx, which proxies `connect.sirony.in` to the
@@ -31,9 +46,9 @@ loopback port. See [`deploy/nginx/`](deploy/nginx/).
 | Context | URL |
 | ------- | --- |
 | Public  | **https://connect.sirony.in** |
-| Internal bind | `127.0.0.1:8097` — nginx proxies the domain to this |
+| Internal bind | `127.0.0.1:8300` — nginx proxies the domain to this |
 
-`127.0.0.1:8097` is never browsed directly in production. It is deliberately
+`127.0.0.1:8300` is never browsed directly in production. It is deliberately
 loopback-only: binding `0.0.0.0` would expose the app to the internet without
 TLS. Change it only in `HOST_PORT`, and update the nginx vhost to match.
 
@@ -49,7 +64,7 @@ echo "127.0.0.1 connect.sirony.in" | sudo tee -a /etc/hosts
 ```bash
 cp .env.example .env          # then set POSTGRES_PASSWORD
 docker compose up --build
-curl http://127.0.0.1:8097/healthz
+curl http://127.0.0.1:8300/healthz
 ```
 
 ## Deploy
@@ -144,14 +159,41 @@ Decisions already baked in, all revisable once the PRD sets real requirements:
   cross-origin requests
 - The service worker never persists API responses to disk
 
-Not yet addressed, and dependent on the PRD: encryption at rest for user
-content, retention and deletion policy, key management, and whatever
-"privacy-first" specifically means for this product's threat model.
+Deliberate product decisions, each traceable to the PRD:
 
-## Next steps
+- **Hearts and follower counts are private.** §8 rules out popularity as a
+  reputation signal, so counts return only to their owner.
+- **No coordinates anywhere.** Locality is free text at town level.
+- **Blocks are undetectable.** A blocked lookup returns the same 404 as a
+  nonexistent one.
+- **The compatibility radar reports agreements and differences**, never a
+  single score, and never a prediction (§6).
+- **Watermarking is a deterrent, not a guarantee** — a second camera defeats
+  it, and the code says so where it is implemented.
 
-1. Supply the PRD
-2. Derive the schema into `db/migrations/`
-3. Build feature routes under `src/routes/`
-4. Add automated Postgres backups — the provider's daily backup add-on is
-   unpurchased, and only 2 manual snapshots exist
+Still open: encryption at rest for user content, and a formal retention
+policy beyond the per-object expiry already enforced.
+
+## Deployment in practice
+
+Production is deployed by rsync from a working copy, then rebuilt in place:
+
+```bash
+rsync -az --exclude node_modules --exclude dist --exclude .git --exclude .env \
+  ./ root@147.93.107.173:/root/sirony-connect/
+ssh root@147.93.107.173 'cd /root/sirony-connect && docker compose up -d --build'
+```
+
+Migrations run automatically at startup, tracked in `schema_migrations`.
+The image never needs to be published for this route.
+
+## Known gaps
+
+1. **Automated backups** — the provider add-on is unpurchased and only manual
+   snapshots exist. `make backup` takes a dump; nothing schedules it.
+2. **Secret chat is unreviewed crypto.** PRD §7 requires specialist review of
+   key management before launch. Do not describe it to users as audited.
+3. **No ID verification.** The `verifications` table and state machine exist,
+   but no provider is wired up.
+4. `DAILY_INTRODUCTIONS` is 5 (`src/routes/discovery.ts`), which is thin for a
+   swipe interface. Raise it once there is local density.

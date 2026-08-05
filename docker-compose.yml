@@ -20,7 +20,7 @@ services:
     ports:
       # Loopback only. TLS is terminated by the host reverse proxy, which
       # forwards connect.sirony.in to this port. Never bind 0.0.0.0 here.
-      - "127.0.0.1:${HOST_PORT:-8097}:3000"
+      - "127.0.0.1:${HOST_PORT:-8300}:3000"
     volumes:
       # Uploads live outside the served static root; access is only ever
       # granted through a short-lived signed ticket.

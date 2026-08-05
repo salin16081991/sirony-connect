@@ -23,7 +23,7 @@ if [ ! -f .env ]; then
 POSTGRES_USER=connect
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 POSTGRES_DB=connect
-HOST_PORT=${HOST_PORT:-8097}
+HOST_PORT=${HOST_PORT:-8300}
 PUBLIC_ORIGIN=https://connect.sirony.in
 LOG_LEVEL=info
 EOF
@@ -35,7 +35,7 @@ fi
 
 # shellcheck disable=SC1091
 set -a; . ./.env; set +a
-HOST_PORT="${HOST_PORT:-8097}"
+HOST_PORT="${HOST_PORT:-8300}"
 
 # --- Preflight ---------------------------------------------------------------
 log "Checking that port ${HOST_PORT} is free"

@@ -2,7 +2,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 COMPOSE := docker compose
-HOST_PORT ?= 8097
+HOST_PORT ?= 8300
 
 .PHONY: help
 help: ## Show this help
