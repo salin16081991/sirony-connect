@@ -1,5 +1,5 @@
 import { api, messageFor } from './api.js';
-import { card, chipGroup, confirmAction, el, field, mount, toast } from './ui.js';
+import { card, chipGroup, confirmAction, el, field, haptic, mount, seen, sheet, showSkeleton, toast } from './ui.js';
 import { createDeck } from './swipe.js';
 
 /* ------------------------------------------------------------- constants -- */
@@ -112,7 +112,7 @@ function authView() {
             : { email: email.value, password: password.value, dateOfBirth: dob.value };
           await api.post(path, payload);
           await boot();
-          location.hash = isLogin ? '#/discover' : '#/profiles';
+          location.hash = isLogin ? '#/discover' : '#/welcome';
           route();
         } catch (err) {
           error.textContent = messageFor(err);
@@ -176,6 +176,17 @@ function swipeCard(intro) {
     el('div', { class: 'card-scrim' }),
     el('div', { class: 'stamp stamp-like', dataset: { stamp: 'like' }, text: 'LIKE' }),
     el('div', { class: 'stamp stamp-nope', dataset: { stamp: 'nope' }, text: 'NOPE' }),
+    el('button', {
+      class: 'card-expand',
+      type: 'button',
+      'aria-label': `More about ${intro.displayName}`,
+      text: 'i',
+      onClick: (event) => {
+        event.stopPropagation();
+        haptic();
+        openDetail(intro);
+      },
+    }),
     el('div', { class: 'card-body' }, [
       el('div', { class: 'card-name' }, [
         el('h2', { text: intro.displayName }),
@@ -191,6 +202,37 @@ function swipeCard(intro) {
           ])
         : null,
     ]),
+  ]);
+}
+
+/** Full profile in a bottom sheet, so reading more never loses your place. */
+function openDetail(intro) {
+  const shared = (intro.sharedModes ?? []).map((m) => MODE_LABEL[m] ?? m);
+  sheet(intro.displayName, [
+    intro.age || intro.locality
+      ? el('p', { class: 'muted', style: 'margin:0 0 .7rem',
+          text: [intro.age, intro.locality].filter(Boolean).join(' · ') })
+      : null,
+    intro.headline ? el('p', { style: 'font-weight:600;margin:0 0 .6rem', text: intro.headline }) : null,
+    intro.bio ? el('p', { class: 'selectable', style: 'margin:0 0 .9rem', text: intro.bio }) : null,
+    shared.length
+      ? el('div', { style: 'margin-bottom:.9rem' }, [
+          el('label', { text: 'You both chose' }),
+          el('div', { class: 'chips' }, shared.map((m) => el('span', { class: 'pill pill-like', text: m }))),
+        ])
+      : null,
+    (intro.interests ?? []).length
+      ? el('div', { style: 'margin-bottom:.9rem' }, [
+          el('label', { text: 'Interests' }),
+          el('div', { class: 'chips' }, intro.interests.map((i) => el('span', { class: 'pill', text: i }))),
+        ])
+      : null,
+    el('button', {
+      class: 'btn btn-danger btn-block',
+      type: 'button',
+      text: 'Report or block',
+      onClick: () => openReport(intro),
+    }),
   ]);
 }
 
@@ -285,7 +327,31 @@ async function discoverView() {
   const deckEl = el('div', { class: 'deck' });
   const counter = el('p', { class: 'deck-count' });
 
+  // Shown once, ever. Nothing about a card says "draggable" on its own.
+  if (!seen.has('swipe-coach')) {
+    const coach = el('div', { class: 'coach' }, [
+      el('div', {}, [
+        el('div', { class: 'coach-arrows' }, [
+          el('div', { class: 'coach-arrow coach-nope' }, [
+            svg('<path d="M15 6l-6 6 6 6"/>'), el('span', { text: 'Swipe left to pass' }),
+          ]),
+          el('div', { class: 'coach-arrow coach-like' }, [
+            svg('<path d="M9 6l6 6-6 6"/>'), el('span', { text: 'Swipe right to like' }),
+          ]),
+        ]),
+        el('p', { class: 'small', style: 'color:#fff;opacity:.85;margin:0 0 1rem',
+          text: 'Or use the buttons below. Tap a card to read more.' }),
+        el('button', {
+          class: 'btn', type: 'button', text: 'Got it',
+          onClick: () => { seen.mark('swipe-coach'); coach.remove(); haptic(); },
+        }),
+      ]),
+    ]);
+    deckEl.append(coach);
+  }
+
   const decide = async (decision, intro) => {
+    haptic(decision === 'like' ? 18 : 8);
     try {
       if (decision === 'like') {
         const { matched } = await api.post('/api/likes', {
@@ -295,6 +361,7 @@ async function discoverView() {
         if (matched) {
           const { matches } = await api.get('/api/matches');
           const fresh = matches.find((m) => m.profileId === intro.id);
+          haptic([30, 60, 30]);
           matchSplash(intro.displayName, fresh?.id ?? '');
         }
       } else {
@@ -339,13 +406,13 @@ async function discoverView() {
       class: 'action action-pass',
       type: 'button',
       'aria-label': 'Pass',
-      onClick: () => deck.decide('pass'),
+      onClick: () => { haptic(8); deck.decide('pass'); },
     }, [svg(ICON.close)]),
     el('button', {
       class: 'action action-like',
       type: 'button',
       'aria-label': 'Like',
-      onClick: () => deck.decide('like'),
+      onClick: () => { haptic(18); deck.decide('like'); },
     }, [svg(ICON.heart)]),
     el('button', {
       class: 'action action-sm',
@@ -418,6 +485,7 @@ function timeLeft(iso) {
 }
 
 async function matchesView() {
+  showSkeleton(3);
   const { matches } = await api.get('/api/matches');
   if (!matches.length) {
     mount(
@@ -485,7 +553,8 @@ async function matchesView() {
 
 /* ------------------------------------------------------------------- chat -- */
 
-async function chatView(matchId) {
+async function chatView(matchId, quiet = false) {
+  if (!quiet) showSkeleton(2);
   let data;
   try {
     data = await api.get(`/api/matches/${matchId}/messages`);
@@ -521,7 +590,9 @@ async function chatView(matchId) {
           try {
             await api.post(`/api/matches/${matchId}/messages`, { body });
             input.value = '';
-            await chatView(matchId);
+            haptic();
+            // quiet: skip the skeleton so the thread does not flash on send.
+            await chatView(matchId, true);
           } catch (err) { toast(messageFor(err)); }
           finally { send.disabled = false; }
         },
@@ -546,6 +617,11 @@ async function chatView(matchId) {
     ], 'card-accent');
   }
 
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 112)}px`;
+  });
+
   mount(
     el('div', { class: 'row row-between' }, [
       el('div', { class: 'list-row' }, [
@@ -558,11 +634,16 @@ async function chatView(matchId) {
     card([thread]),
     composer,
   );
+
+  // A conversation should open at the newest message, not the oldest.
+  const pane = document.getElementById('view');
+  pane.scrollTop = pane.scrollHeight;
 }
 
 /* ------------------------------------------------------------------- feed -- */
 
 async function feedView() {
+  showSkeleton(2);
   const kind = location.hash.includes('reel') ? 'reel' : 'story';
   const { posts } = await api.get(`/api/posts?kind=${kind}`);
 
@@ -822,6 +903,7 @@ function profileEditor(existing) {
 }
 
 async function profilesView() {
+  showSkeleton(2);
   let stats = null;
   try { stats = await api.get('/api/me/stats'); } catch { /* not fatal */ }
 
@@ -906,6 +988,7 @@ async function profilesView() {
 /* ---------------------------------------------------------------- privacy -- */
 
 async function privacyView() {
+  showSkeleton(3);
   const { consents } = await api.get('/api/consents');
 
   mount(
@@ -1042,7 +1125,12 @@ async function route() {
           await profilesView();
         }
         break;
-      default: syncTabs('discover'); await discoverView();
+      case 'welcome': syncTabs(null); onboardingView(); break;
+      default:
+        // A first-time user gets the guided flow, not an empty deck.
+        if (!state.profiles.length) { syncTabs(null); onboardingView(); break; }
+        syncTabs('discover');
+        await discoverView();
     }
   } catch (err) {
     if (err.status === 401) { state.user = null; return route(); }

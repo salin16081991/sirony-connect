@@ -73,3 +73,75 @@ export function chipGroup(options, selected = []) {
 export function confirmAction(message) {
   return window.confirm(message);
 }
+
+/* ------------------------------------------------- interaction primitives -- */
+
+/**
+ * Short haptic tick. Android fires it; iOS Safari ignores `vibrate` entirely,
+ * so this is a progressive enhancement and never a requirement.
+ */
+export function haptic(pattern = 12) {
+  try {
+    navigator.vibrate?.(pattern);
+  } catch {
+    /* unsupported — nothing to do */
+  }
+}
+
+/** Placeholder blocks shown while a screen loads, instead of a blank pane. */
+export function skeleton(rows = 3) {
+  return el('div', { class: 'stack' },
+    Array.from({ length: rows }, () =>
+      el('div', { class: 'skeleton-card' }, [
+        el('div', { class: 'skeleton skeleton-avatar' }),
+        el('div', { class: 'grow' }, [
+          el('div', { class: 'skeleton skeleton-line', style: 'width:55%' }),
+          el('div', { class: 'skeleton skeleton-line', style: 'width:80%' }),
+        ]),
+      ])));
+}
+
+export function showSkeleton(rows) {
+  mount(skeleton(rows));
+}
+
+/**
+ * Bottom sheet — the mobile-native way to show secondary detail without
+ * losing the page behind it. Dismissed by backdrop tap, the close button,
+ * or Escape.
+ */
+export function sheet(title, children) {
+  const panel = el('div', { class: 'sheet-panel', role: 'dialog', 'aria-modal': 'true' }, [
+    el('div', { class: 'sheet-grip' }),
+    el('div', { class: 'row row-between', style: 'margin-bottom:.6rem' }, [
+      el('h2', { text: title, style: 'font-size:1.15rem' }),
+      el('button', { class: 'btn btn-ghost btn-sm', type: 'button', text: 'Close', onClick: () => close() }),
+    ]),
+    ...[].concat(children),
+  ]);
+
+  const backdrop = el('div', { class: 'sheet-backdrop', onClick: (e) => {
+    if (e.target === backdrop) close();
+  } }, [panel]);
+
+  function close() {
+    backdrop.classList.add('is-closing');
+    setTimeout(() => backdrop.remove(), 180);
+    document.removeEventListener('keydown', onKey);
+  }
+  function onKey(e) { if (e.key === 'Escape') close(); }
+
+  document.addEventListener('keydown', onKey);
+  document.body.append(backdrop);
+  return { close };
+}
+
+/** Remembers one-off UI hints so a coach mark shows once, not every visit. */
+export const seen = {
+  has: (key) => {
+    try { return localStorage.getItem(`seen:${key}`) === '1'; } catch { return true; }
+  },
+  mark: (key) => {
+    try { localStorage.setItem(`seen:${key}`, '1'); } catch { /* private mode */ }
+  },
+};
