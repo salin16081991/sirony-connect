@@ -21,6 +21,7 @@ import { moderationRoutes, appealRoutes } from './routes/moderation.js';
 import { mediaRoutes } from './routes/media.js';
 import { socialRoutes } from './routes/social.js';
 import { secretRoutes } from './routes/secret.js';
+import { adminRoutes, whoamiRoutes } from './routes/admin.js';
 import {
   LIMITS,
   ensureMediaRoot,
@@ -96,6 +97,8 @@ await app.register(appealRoutes);
 await app.register(mediaRoutes);
 await app.register(socialRoutes);
 await app.register(secretRoutes);
+await app.register(adminRoutes);
+await app.register(whoamiRoutes);
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 

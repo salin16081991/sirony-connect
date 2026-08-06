@@ -1,6 +1,7 @@
 import { api, messageFor } from './api.js';
 import { card, chipGroup, confirmAction, el, field, haptic, mount, seen, sheet, showSkeleton, toast } from './ui.js';
 import { createDeck } from './swipe.js';
+import { adminView } from './admin.js';
 
 /* ------------------------------------------------------------- constants -- */
 
@@ -40,7 +41,7 @@ const REPORT_CATEGORIES = [
   ['other', 'Something else'],
 ];
 
-const state = { user: null, profiles: [] };
+const state = { user: null, profiles: [], roles: { isAdmin: false, isModerator: false } };
 
 /* ----------------------------------------------------------------- icons -- */
 
@@ -1020,6 +1021,13 @@ async function privacyView() {
       }),
     ], 'card-accent'),
 
+    state.roles.isAdmin
+      ? card([
+          el('h2', { text: 'Administration' }),
+          el('p', { text: 'Operator tooling: users, content, moderation and audit.' }),
+          el('a', { class: 'btn btn-block', href: '#/admin', text: 'Open admin panel' }),
+        ], 'card-accent')
+      : null,
     card([
       el('h2', { text: 'Your data' }),
       el('button', {
@@ -1101,6 +1109,7 @@ async function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   const view = document.getElementById('view');
   view.classList.remove('is-deck');
+  if (parts[0] !== 'admin') document.body.classList.remove('is-admin');
   document.querySelector('.match-overlay')?.remove();
 
   if (!state.user) {
@@ -1116,6 +1125,7 @@ async function route() {
       case 'feed': syncTabs('feed'); await feedView(); break;
       case 'post': syncTabs('feed'); await composeView(parts[1] === 'reel' ? 'reel' : 'story'); break;
       case 'privacy': syncTabs('privacy'); await privacyView(); break;
+      case 'admin': syncTabs(null); await adminView(parts.slice(1)); return;
       case 'profiles':
         syncTabs('profiles');
         if (parts[2] === 'edit') {
@@ -1142,6 +1152,7 @@ async function boot() {
   try {
     state.user = await api.get('/api/auth/me');
     await loadProfiles();
+    try { state.roles = await api.get('/api/me/roles'); } catch { /* non-fatal */ }
   } catch {
     state.user = null;
     state.profiles = [];
