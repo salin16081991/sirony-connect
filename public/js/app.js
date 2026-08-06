@@ -429,7 +429,7 @@ async function discoverView() {
   mount(deckEl, el('div', {}, [actions, counter]));
 }
 
-function openReport(intro) {
+function openReport(intro, matchId = null) {
   const select = el('select');
   for (const [value, label] of REPORT_CATEGORIES) select.append(el('option', { value, text: label }));
   const details = el('textarea', { maxlength: '4000' });
@@ -447,11 +447,17 @@ function openReport(intro) {
         text: 'Submit and block',
         onClick: async () => {
           try {
-            await api.post('/api/reports', {
+            const { evidenceCaptured } = await api.post('/api/reports', {
               profileId: intro.id,
               category: select.value,
               details: details.value.trim() || undefined,
+              // Attaching the match preserves the conversation as evidence,
+              // which matters because messages here can disappear.
+              ...(matchId ? { matchId } : {}),
             });
+            if (evidenceCaptured) {
+              toast(`Reported. ${evidenceCaptured} messages saved for review.`);
+            }
             await api.post('/api/blocks', { profileId: intro.id }).catch(() => {});
             toast('Reported and blocked');
             location.hash = '#/discover';
@@ -629,7 +635,14 @@ async function chatView(matchId, quiet = false) {
         avatar(matchId, match.otherName, 38),
         el('h1', { text: match.otherName, style: 'font-size:1.2rem' }),
       ]),
-      el('a', { class: 'btn btn-ghost btn-sm', href: '#/matches', text: 'Back' }),
+      el('div', { class: 'row' }, [
+        el('button', {
+          class: 'btn btn-ghost btn-sm', type: 'button', text: 'Report',
+          onClick: () => openReport(
+            { id: match.otherProfileId, displayName: match.otherName }, matchId),
+        }),
+        el('a', { class: 'btn btn-ghost btn-sm', href: '#/matches', text: 'Back' }),
+      ]),
     ]),
     notice,
     card([thread]),

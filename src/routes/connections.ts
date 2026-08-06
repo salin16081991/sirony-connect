@@ -290,16 +290,19 @@ export async function connectionRoutes(app: FastifyInstance): Promise<void> {
             category: { type: 'string', enum: [...REPORT_CATEGORIES] },
             details: { type: 'string', maxLength: 4000 },
             alsoBlock: { type: 'boolean' },
+            // Reporting from a conversation preserves it as evidence.
+            matchId: { type: 'string', format: 'uuid' },
           },
         },
       },
       config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
     },
     async (request, reply) => {
-      const { profileId, category, details } = request.body as {
+      const { profileId, category, details, matchId } = request.body as {
         profileId: string;
         category: string;
         details?: string;
+        matchId?: string;
       };
       const userId = request.user!.id;
 
@@ -310,15 +313,60 @@ export async function connectionRoutes(app: FastifyInstance): Promise<void> {
       const subjectId = rows[0]?.user_id;
       if (!subjectId) return reply.code(404).send({ error: 'not_found' });
 
-      await pool.query(
-        `INSERT INTO reports (reporter_id, subject_id, category, details, priority)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [userId, subjectId, category, details ?? null, URGENT.has(category) ? 'urgent' : 'standard'],
-      );
+      const priority = URGENT.has(category) ? 'urgent' : 'standard';
+      const client = await pool.connect();
+      let evidenceCount = 0;
+
+      try {
+        await client.query('BEGIN');
+
+        // Only accept a match the reporter is actually in — otherwise a report
+        // would be a way to snapshot other people's conversations.
+        let linkedMatch: string | null = null;
+        if (matchId) {
+          const owned = await client.query(
+            `SELECT 1 FROM matches m
+               JOIN profiles p ON p.id IN (m.profile_a_id, m.profile_b_id)
+              WHERE m.id = $1 AND p.user_id = $2`,
+            [matchId, userId],
+          );
+          if (owned.rowCount) linkedMatch = matchId;
+        }
+
+        const report = await client.query<{ id: string }>(
+          `INSERT INTO reports (reporter_id, subject_id, category, details, priority, match_id)
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+          [userId, subjectId, category, details ?? null, priority, linkedMatch],
+        );
+
+        if (linkedMatch) {
+          // Snapshot now: these messages may be deleted by their retention
+          // setting long before a moderator opens the report.
+          const captured = await client.query(
+            `INSERT INTO report_evidence
+               (report_id, sender_name, sender_is_subject, body, sent_at)
+             SELECT $1, p.display_name, (p.user_id = $3), g.body, g.created_at
+               FROM messages g
+               JOIN profiles p ON p.id = g.sender_profile_id
+              WHERE g.match_id = $2
+              ORDER BY g.created_at
+              LIMIT 200`,
+            [report.rows[0]!.id, linkedMatch, subjectId],
+          );
+          evidenceCount = captured.rowCount ?? 0;
+        }
+
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
 
       // The audit trail records that a report happened, never its contents.
-      await audit(userId, 'report.filed', subjectId, { category });
-      return reply.code(201).send({ ok: true, priority: URGENT.has(category) ? 'urgent' : 'standard' });
+      await audit(userId, 'report.filed', subjectId, { category, evidenceCount });
+      return reply.code(201).send({ ok: true, priority, evidenceCaptured: evidenceCount });
     },
   );
 }

@@ -442,9 +442,46 @@ async function reports() {
     ]) action.append(el('option', { value: v, text: l }));
     const rationale = el('textarea', { placeholder: 'Shown to the user. Explain the decision.' });
     const error = el('p', { class: 'error-text', hidden: true });
+    const evidence = el('div');
     const panel = sheet('Decide', [
       el('p', { class: 'small muted', style: 'margin:0 0 .7rem', text: `${r.category} · ${r.priority} · reported ${when(r.createdAt)}` }),
       r.details ? el('p', { class: 'selectable', style: 'margin:0 0 .8rem', text: r.details }) : null,
+      r.evidenceCount
+        ? el('div', { style: 'margin-bottom:.8rem' }, [
+            el('button', {
+              class: 'btn btn-ghost btn-block', type: 'button',
+              text: `Read the conversation (${r.evidenceCount} messages)`,
+              onClick: async (event) => {
+                const reason = window.prompt(
+                  'Why are you reading this conversation? Recorded against your account, permanently.');
+                if (!reason || reason.trim().length < 10) {
+                  toast('A reason of at least 10 characters is required');
+                  return;
+                }
+                event.currentTarget.disabled = true;
+                try {
+                  const e = await api.get(
+                    `/api/moderation/reports/${r.id}/evidence?reason=${encodeURIComponent(reason.trim())}`);
+                  evidence.replaceChildren(
+                    el('p', { class: 'small', style: 'color:var(--warn);margin:.4rem 0', text: e.note }),
+                    el('div', { class: 'thread' }, e.messages.map((g) =>
+                      el('div', { class: `bubble ${g.senderIsSubject ? '' : 'bubble-mine'}`.trim() }, [
+                        el('p', { class: 'small', style: 'font-weight:700;margin:0',
+                          text: `${g.senderName}${g.senderIsSubject ? ' (reported)' : ''}` }),
+                        el('p', { text: g.body }),
+                        el('span', { class: 'bubble-time', text: when(g.sentAt) }),
+                      ]))),
+                  );
+                } catch (err) {
+                  toast(messageFor(err));
+                  event.currentTarget.disabled = false;
+                }
+              },
+            }),
+            evidence,
+          ])
+        : el('p', { class: 'small muted', style: 'margin:0 0 .8rem',
+            text: 'No conversation was attached to this report.' }),
       el('label', { text: 'Outcome' }), action,
       el('div', { style: 'margin-top:.6rem' }, [el('label', { text: 'Rationale' }), rationale]),
       error,
@@ -481,12 +518,15 @@ async function reports() {
     ]),
     card([
       el('h2', { text: 'Queue' }),
-      table(['Priority', 'Category', 'Subject', 'Against', 'Status', 'When', ''],
+      table(['Priority', 'Category', 'Subject', 'Against', 'Evidence', 'Status', 'When', ''],
         queue.queue.map((r) => el('tr', {}, [
           el('td', {}, [el('span', { class: `pill ${r.priority === 'urgent' ? 'pill-bad' : ''}`.trim(), text: r.priority })]),
           el('td', { text: r.category }),
           el('td', {}, [el('a', { href: `#/admin/user/${r.subjectId}`, text: (r.subjectNames ?? []).join(', ') || 'account' })]),
           el('td', { text: String(r.reportsAgainstSubject) }),
+          el('td', {}, [r.evidenceCount
+            ? el('span', { class: 'pill pill-warn', text: `${r.evidenceCount} msg` })
+            : el('span', { class: 'small muted', text: '—' })]),
           el('td', { text: r.status }),
           el('td', { class: 'small muted', text: when(r.createdAt) }),
           el('td', {}, [el('button', { class: 'btn btn-sm', type: 'button', text: 'Decide', onClick: () => decide(r) })]),

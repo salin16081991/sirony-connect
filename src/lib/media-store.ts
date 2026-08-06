@@ -117,6 +117,21 @@ export async function sweepExpiredMedia(log: (msg: string) => void): Promise<voi
   }
   // Expired posts lose their row too, so feeds cannot resurrect them.
   const posts = await pool.query('DELETE FROM posts WHERE expires_at < now() RETURNING id');
+
+  // Report evidence is a copy of messages users expected to disappear, so it
+  // is kept only as long as it could plausibly be needed: 90 days past the
+  // decision, which covers the appeal window with room to spare.
+  const evidence = await pool.query(
+    `DELETE FROM report_evidence e
+      USING reports r
+      WHERE r.id = e.report_id
+        AND r.resolved_at IS NOT NULL
+        AND r.resolved_at < now() - interval '90 days'
+      RETURNING e.id`,
+  );
+  if (evidence.rowCount) {
+    log(`purged ${evidence.rowCount} evidence rows from settled reports`);
+  }
   if (rows.length || posts.rowCount) {
     log(`media sweep removed ${rows.length} files and ${posts.rowCount ?? 0} posts`);
   }

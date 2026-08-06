@@ -37,6 +37,9 @@ export async function moderationRoutes(app: FastifyInstance): Promise<void> {
     const { rows } = await pool.query(
       `SELECT r.id, r.category, r.details, r.priority, r.status,
               r.created_at AS "createdAt",
+              r.match_id AS "matchId",
+              (SELECT count(*) FROM report_evidence e
+                WHERE e.report_id = r.id)::int AS "evidenceCount",
               r.claimed_by AS "claimedBy",
               r.subject_id AS "subjectId",
               su.status AS "subjectStatus",
@@ -163,6 +166,52 @@ export async function moderationRoutes(app: FastifyInstance): Promise<void> {
       }
     },
   );
+
+  /**
+   * The conversation as it stood when the report was filed.
+   *
+   * This is the evidence a suspension rests on, so reading it is reason-gated
+   * and written to sensitive_access_log — the same treatment as reading a
+   * live conversation, because it is the same data.
+   */
+  app.get('/api/moderation/reports/:id/evidence', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { reason } = request.query as { reason?: string };
+
+    if (!reason || reason.trim().length < 10) {
+      return reply.code(400).send({ error: 'reason_required' });
+    }
+
+    const report = await pool.query<{ subject_id: string; reporter_id: string | null }>(
+      'SELECT subject_id, reporter_id FROM reports WHERE id = $1',
+      [id],
+    );
+    if (!report.rowCount) return reply.code(404).send({ error: 'not_found' });
+
+    for (const subject of [report.rows[0]!.subject_id, report.rows[0]!.reporter_id]) {
+      if (!subject) continue;
+      await pool.query(
+        `INSERT INTO sensitive_access_log (admin_id, subject_id, resource, resource_id, reason)
+         VALUES ($1, $2, 'report_evidence', $3, $4)`,
+        [request.user!.id, subject, id, reason.trim()],
+      );
+    }
+
+    const { rows } = await pool.query(
+      `SELECT sender_name AS "senderName", sender_is_subject AS "senderIsSubject",
+              body, sent_at AS "sentAt", captured_at AS "capturedAt"
+         FROM report_evidence WHERE report_id = $1 ORDER BY sent_at`,
+      [id],
+    );
+
+    return {
+      messages: rows,
+      capturedAt: rows[0]?.capturedAt ?? null,
+      note: rows.length
+        ? 'Captured when the report was filed. The originals may since have been deleted by the conversation\'s retention setting.'
+        : 'No conversation was attached to this report.',
+    };
+  });
 
   app.get('/api/moderation/subjects/:id/history', async (request) => {
     const { id } = request.params as { id: string };

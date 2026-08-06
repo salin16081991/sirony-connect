@@ -83,6 +83,8 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
       match: {
         id: match.id,
         otherName: match.otherName,
+        // Needed so the client can report from inside the conversation.
+        otherProfileId: match.otherProfileId,
         expiresAt: match.expiresAt,
         openedAt: match.openedAt,
         expired: match.expired,
