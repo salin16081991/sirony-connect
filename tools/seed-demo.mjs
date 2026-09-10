@@ -3,6 +3,11 @@
  *
  *   node tools/seed-demo.mjs https://connect.sirony.in
  *   node tools/seed-demo.mjs http://127.0.0.1:8300
+ *   node tools/seed-demo.mjs https://connect.sirony.in Farhan Leela   # only these
+ *
+ * Registration is rate-limited to 10/hour per IP and a duplicate attempt still
+ * counts, so re-running for everyone burns the quota on people who already
+ * exist. Name the ones you actually want.
  *
  * Every account uses the reserved `.invalid` TLD (RFC 2606), which can never
  * be a real address, so these are unmistakably fake and trivially removable:
@@ -178,12 +183,14 @@ async function seedOne(person, index) {
   };
 }
 
+const only = new Set(process.argv.slice(3).map((n) => n.toLowerCase()));
 const results = [];
 for (const [index, person] of PEOPLE.entries()) {
+  if (only.size && !only.has(person[0].toLowerCase())) continue;
   results.push(await seedOne(person, index));
 }
 
 for (const r of results) console.log(`  ${r.name.padEnd(10)} ${r.status}`);
 const ok = results.filter((r) => r.status.startsWith('created')).length;
-console.log(`\n${ok}/${PEOPLE.length} demo profiles ready at ${BASE}`);
+console.log(`\n${ok}/${results.length} demo profiles ready at ${BASE}`);
 console.log(`Remove later:  DELETE FROM users WHERE email LIKE '%@${DOMAIN}';`);
