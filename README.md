@@ -135,8 +135,11 @@ Caching strategy, which encodes the privacy rule:
   user data is left in CacheStorage on a shared or lost device
 - Cross-origin requests are ignored by the worker entirely
 
-`sw.js` and HTML are served `no-cache` so a stale worker can't pin users to an
-old version; icons get a week, other assets an hour.
+Everything except icons is served `no-cache` (ETag revalidation, cheap 304s),
+so a deploy reaches returning users immediately; icons get a week. The service
+worker's cache name is stamped per server start, so every deploy installs a
+fresh worker that precaches with `cache: 'reload'` — the HTTP cache can never
+pin old code. Instant loads come from the worker, not from `max-age`.
 
 Installability requires HTTPS, so the install prompt appears only once nginx
 and the certificate are live at connect.sirony.in (localhost is also treated as
