@@ -25,7 +25,11 @@ const SHELL_ASSETS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_ASSETS)),
+    // `reload` bypasses the HTTP cache, so a new worker precaches what the
+    // server has now, not what the browser remembers from before the deploy.
+    caches.open(SHELL_CACHE).then((cache) =>
+      cache.addAll(SHELL_ASSETS.map((url) => new Request(url, { cache: 'reload' }))),
+    ),
   );
 });
 
@@ -96,7 +100,7 @@ self.addEventListener('fetch', (event) => {
       const hit = await cache.match(request);
       if (hit) {
         event.waitUntil(
-          fetch(request)
+          fetch(request, { cache: 'no-cache' })
             .then((res) => (res.ok ? cache.put(request, res.clone()) : null))
             .catch(() => {}),
         );

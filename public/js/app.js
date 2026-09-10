@@ -82,7 +82,9 @@ function avatar(profileId, name, size = 52) {
 
 function authView() {
   let mode = 'login';
-  const wrap = el('div', { class: 'view', style: 'display:grid;gap:.85rem' });
+  // Render straight into the live pane. A detached wrapper broke the
+  // sign-in/sign-up toggle: re-renders went to a node no longer in the page.
+  const wrap = document.getElementById('view');
 
   const render = () => {
     const isLogin = mode === 'login';
@@ -131,21 +133,20 @@ function authView() {
     ]);
 
     wrap.replaceChildren(
-      el('div', { style: 'padding:1.5rem 0 .5rem' }, [
-        el('h1', { text: isLogin ? 'Welcome back' : 'Find your people' , style: 'font-size:1.9rem'}),
+      el('div', { class: 'hero' }, [
+        el('img', { src: '/icons/icon-192.png', alt: '', width: '64', height: '64' }),
+        el('h1', { text: isLogin ? 'Welcome back' : 'Find your people' }),
         el('p', {
-          class: 'muted',
-          style: 'margin:.4rem 0 0',
           text: isLogin
-            ? 'Sign in to see who is waiting.'
-            : 'Swipe, match, and stay in control of who can find you.',
+            ? 'Good to see you again. Someone new might be waiting.'
+            : 'Real people, honest intentions — and you decide who gets to find you.',
         }),
       ]),
       card([form]),
       el('button', {
         class: 'btn btn-outline btn-block',
         type: 'button',
-        text: isLogin ? 'Create an account' : 'I already have an account',
+        text: isLogin ? 'New here? Create an account' : 'I already have an account',
         onClick: () => {
           mode = isLogin ? 'register' : 'login';
           render();
@@ -237,11 +238,17 @@ function openDetail(intro) {
   ]);
 }
 
-function matchSplash(name, matchId) {
+function matchSplash(intro, matchId, me) {
+  const name = intro.displayName;
   const overlay = el('div', { class: 'match-overlay' }, [
-    el('div', {}, [
-      el('h1', { text: "It's a match" }),
-      el('p', { class: 'muted', style: 'margin:.5rem 0 1.5rem', text: `You and ${name} liked each other.` }),
+    el('div', { class: 'match-hearts' }, ['♥', '♥', '♥', '♥', '♥'].map((h) => el('span', { text: h }))),
+    el('div', { style: 'position:relative' }, [
+      el('div', { class: 'match-avatars' }, [
+        avatar(me?.id ?? 'me', me?.displayName ?? 'You', 92),
+        avatar(intro.id, name, 92),
+      ]),
+      el('h1', { text: "It's a match!" }),
+      el('p', { class: 'muted', style: 'margin:.5rem 0 1.6rem', text: `You and ${name} liked each other. Say hi while it's fresh.` }),
       el('a', {
         class: 'btn btn-block',
         href: `#/chat/${matchId}`,
@@ -278,12 +285,12 @@ async function discoverView() {
   if (profile.visibility !== 'discoverable') {
     mount(
       card([
-        el('h3', { text: 'You are invisible right now' }),
-        el('p', { text: 'Discovery is reciprocal — you can browse once others can find you too.' }),
+        el('h3', { text: "You're hidden right now" }),
+        el('p', { text: 'To see people, let people see you. You can hide again any time.' }),
         el('button', {
           class: 'btn btn-block',
           type: 'button',
-          text: 'Become discoverable',
+          text: 'Show me to others',
           onClick: async () => {
             await api.patch(`/api/profiles/${profile.id}/visibility`, { visibility: 'discoverable' });
             await loadProfiles();
@@ -312,11 +319,12 @@ async function discoverView() {
     mount(
       card([
         el('div', { class: 'empty' }, [
-          el('h3', { text: 'That is everyone for today' }),
+          el('div', { class: 'empty-illo', text: '✨' }),
+          el('h3', { text: "You've met everyone for today" }),
           el('p', {
             class: 'small',
             style: 'margin-top:.4rem',
-            text: `${data.dailyLimit} introductions a day, chosen for shared intentions rather than volume. More tomorrow.`,
+            text: `We pick ${data.dailyLimit} people a day who want what you want. Fresh faces tomorrow.`,
           }),
         ]),
         el('a', { class: 'btn btn-outline btn-block', href: '#/matches', text: 'See your matches' }),
@@ -327,6 +335,43 @@ async function discoverView() {
 
   const deckEl = el('div', { class: 'deck' });
   const counter = el('p', { class: 'deck-count' });
+
+
+  const decide = async (decision, intro) => {
+    haptic(decision === 'like' ? 18 : 8);
+    try {
+      if (decision === 'like') {
+        const { matched } = await api.post('/api/likes', {
+          fromProfileId: profile.id,
+          toProfileId: intro.id,
+        });
+        if (matched) {
+          const { matches } = await api.get('/api/matches');
+          const fresh = matches.find((m) => m.profileId === intro.id);
+          haptic([30, 60, 30]);
+          matchSplash(intro, fresh?.id ?? '', profile);
+        }
+      } else {
+        await api.post(`/api/introductions/${intro.id}/pass`);
+      }
+    } catch (err) {
+      toast(messageFor(err));
+    }
+    counter.textContent = `${deck.remaining} left today`;
+  };
+
+  const deck = createDeck({
+    container: deckEl,
+    cards: pending,
+    renderCard: swipeCard,
+    onDecide: decide,
+    onEmpty: () => {
+      view.classList.remove('is-deck');
+      void discoverView();
+    },
+  });
+
+  counter.textContent = `${deck.remaining} left today`;
 
   // Shown once, ever. Nothing about a card says "draggable" on its own.
   if (!seen.has('swipe-coach')) {
@@ -350,42 +395,6 @@ async function discoverView() {
     ]);
     deckEl.append(coach);
   }
-
-  const decide = async (decision, intro) => {
-    haptic(decision === 'like' ? 18 : 8);
-    try {
-      if (decision === 'like') {
-        const { matched } = await api.post('/api/likes', {
-          fromProfileId: profile.id,
-          toProfileId: intro.id,
-        });
-        if (matched) {
-          const { matches } = await api.get('/api/matches');
-          const fresh = matches.find((m) => m.profileId === intro.id);
-          haptic([30, 60, 30]);
-          matchSplash(intro.displayName, fresh?.id ?? '');
-        }
-      } else {
-        await api.post(`/api/introductions/${intro.id}/pass`);
-      }
-    } catch (err) {
-      toast(messageFor(err));
-    }
-    counter.textContent = `${deck.remaining} left today`;
-  };
-
-  const deck = createDeck({
-    container: deckEl,
-    cards: pending,
-    renderCard: swipeCard,
-    onDecide: decide,
-    onEmpty: () => {
-      view.classList.remove('is-deck');
-      void discoverView();
-    },
-  });
-
-  counter.textContent = `${deck.remaining} left today`;
 
   const actions = el('div', { class: 'deck-actions' }, [
     el('button', {
@@ -498,8 +507,9 @@ async function matchesView() {
     mount(
       el('h1', { text: 'Matches' }),
       card([el('div', { class: 'empty' }, [
-        el('p', { text: 'No matches yet.' }),
-        el('p', { class: 'small', text: 'A match happens only when you both swipe right.' }),
+        el('div', { class: 'empty-illo', text: '💫' }),
+        el('h3', { text: 'No matches yet' }),
+        el('p', { class: 'small', style: 'margin-top:.4rem', text: 'When you both swipe right, they land here. Keep going.' }),
       ])]),
     );
     return;
@@ -509,7 +519,7 @@ async function matchesView() {
     el('h1', { text: 'Matches' }),
     el('p', {
       class: 'muted small',
-      text: 'A new match has 24 hours to be opened. Whoever was liked first goes first.',
+      text: 'New matches stay open for 24 hours. Whoever was liked first says hello first.',
     }),
     ...matches.map((m) => {
       const status = m.expired
@@ -619,8 +629,8 @@ async function chatView(matchId, quiet = false) {
     ], 'card-accent');
   } else if (!match.openedAt) {
     notice = card([
-      el('h3', { text: 'Your move' }),
-      el('p', { text: `You have ${timeLeft(match.expiresAt) ?? 'a moment'} to start this.` }),
+      el('h3', { text: 'Your move — say hi 👋' }),
+      el('p', { text: `You have ${timeLeft(match.expiresAt) ?? 'a moment'} to break the ice.` }),
     ], 'card-accent');
   }
 
@@ -673,7 +683,7 @@ async function feedView() {
   ]);
 
   mount(
-    el('h1', { text: 'Feed' }),
+    el('h1', { text: 'Moments' }),
     tabs,
     el('a', {
       class: 'btn btn-outline btn-block',
@@ -734,8 +744,9 @@ async function feedView() {
           ]),
         ]))
       : [card([el('div', { class: 'empty' }, [
-          el('p', { text: kind === 'reel' ? 'No reels yet.' : 'No stories yet.' }),
-          el('p', { class: 'small', text: 'Follow people, or post the first one.' }),
+          el('div', { class: 'empty-illo', text: kind === 'reel' ? '🎬' : '📸' }),
+          el('h3', { text: kind === 'reel' ? 'No reels yet' : 'No stories yet' }),
+          el('p', { class: 'small', style: 'margin-top:.4rem', text: 'Follow a few people, or be the first to post.' }),
         ])])]),
   );
 }
@@ -829,6 +840,12 @@ function profileEditor(existing) {
   const interests = el('input', { type: 'text' });
   interests.value = (existing?.interests ?? []).join(', ');
   const photo = el('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp' });
+  const photoLabel = el('span', { text: existing?.photoMediaId ? 'Replace photo' : 'Choose a photo' });
+  photo.addEventListener('change', () => {
+    const chosen = photo.files?.[0];
+    photoLabel.textContent = chosen ? `Selected: ${chosen.name}` : 'Choose a photo';
+  });
+  const photoPicker = el('label', { class: 'file-trigger btn btn-outline btn-block' }, [photo, photoLabel]);
 
   const ageMin = el('input', { type: 'number', min: '18', max: '120' });
   ageMin.value = String(existing?.ageMin ?? 18);
@@ -895,7 +912,11 @@ function profileEditor(existing) {
     },
   }, [
     field('Purpose', kind, existing ? 'Cannot be changed later.' : 'Each purpose is a separate profile.'),
-    field('Photo', photo, existing?.photoMediaId ? 'A photo is set. Choose a new file to replace it.' : 'Shown on your card.'),
+    el('div', { class: 'field' }, [
+      el('label', { text: 'Photo' }),
+      photoPicker,
+      el('p', { class: 'hint', text: existing?.photoMediaId ? 'A photo is already set.' : 'Shown on your card. JPEG, PNG or WebP up to 8MB.' }),
+    ]),
     field('Name', displayName),
     field('Headline', headline),
     field('About you', bio),
@@ -921,7 +942,7 @@ async function profilesView() {
   let stats = null;
   try { stats = await api.get('/api/me/stats'); } catch { /* not fatal */ }
 
-  const children = [el('h1', { text: 'Your profiles' })];
+  const children = [el('h1', { text: 'You' })];
 
   if (stats) {
     children.push(card([
@@ -994,9 +1015,204 @@ async function profilesView() {
   }
 
   if (state.profiles.length < KINDS.length) {
-    children.push(card([el('h2', { text: 'Add a profile' }), profileEditor(null)]));
+    children.push(card([el('h2', { text: 'Add another side of you' }), profileEditor(null)]));
   }
+  children.push(card([
+    el('h2', { text: 'Privacy & account' }),
+    el('p', { text: 'Your choices, your data, and who can find you.' }),
+    el('a', { class: 'btn btn-ghost btn-block', href: '#/privacy', text: 'Open settings' }),
+  ]));
   mount(...children);
+}
+
+/* ------------------------------------------------------------ onboarding -- */
+
+/**
+ * Four short steps instead of one long form. A new user's first screen should
+ * ask one question, not twenty — and every step is answerable without effort,
+ * so the drop-off point is never "I'll do this later".
+ */
+function onboardingView() {
+  let step = 0;
+  const draft = {
+    kind: 'dating', modes: [], displayName: '', headline: '', bio: '',
+    locality: '', interests: '', visibility: 'discoverable', photoFile: null,
+  };
+  const wrap = el('div');
+
+  const dots = () =>
+    el('div', { class: 'steps' },
+      Array.from({ length: 4 }, (_, i) =>
+        el('div', { class: `step-dot ${i <= step ? 'is-done' : ''}`.trim() })));
+
+  const head = (title, sub) =>
+    el('div', { class: 'step-head' }, [el('h1', { text: title }), sub ? el('p', { text: sub }) : null]);
+
+  const nav = (label, canGo, onNext) => {
+    const next = el('button', {
+      class: 'btn btn-block', type: 'button', text: label,
+      onClick: () => { haptic(); onNext(); },
+    });
+    next.disabled = !canGo();
+    return el('div', {}, [
+      next,
+      step > 0
+        ? el('button', {
+            class: 'btn btn-outline btn-block', type: 'button', style: 'margin-top:.5rem',
+            text: 'Back', onClick: () => { step -= 1; render(); },
+          })
+        : null,
+    ]);
+  };
+
+  function render() {
+    if (step === 0) {
+      const choices = el('div', { class: 'stack', style: 'display:grid;gap:.6rem' },
+        KINDS.map(([value, label]) =>
+          el('button', {
+            class: `btn btn-block ${draft.kind === value ? '' : 'btn-outline'}`,
+            type: 'button', text: label,
+            onClick: () => { draft.kind = value; haptic(); render(); },
+          })));
+      wrap.replaceChildren(
+        dots(),
+        head('What brings you here?', 'Each purpose gets its own profile and its own audience. You can add more later.'),
+        choices,
+        el('div', { style: 'margin-top:1rem' }, [nav('Continue', () => true, () => { step = 1; render(); })]),
+      );
+      return;
+    }
+
+    if (step === 1) {
+      const group = chipGroup(MODES, draft.modes);
+      const proceed = el('div');
+      const refresh = () => {
+        draft.modes = group.value();
+        proceed.replaceChildren(nav('Continue', () => draft.modes.length > 0, () => { step = 2; render(); }));
+      };
+      group.node.addEventListener('click', refresh);
+      wrap.replaceChildren(
+        dots(),
+        head('What are you open to?', 'You only meet people who picked at least one of the same. Choose as many as you like.'),
+        group.node,
+        el('div', { style: 'margin-top:1.2rem' }, [proceed]),
+      );
+      refresh();
+      return;
+    }
+
+    if (step === 2) {
+      const name = el('input', { type: 'text', maxlength: '60', placeholder: 'What should people call you?' });
+      name.value = draft.displayName;
+      const headline = el('input', { type: 'text', maxlength: '140', placeholder: 'One line about you' });
+      headline.value = draft.headline;
+      const bio = el('textarea', { maxlength: '2000', placeholder: 'Anything you want people to know' });
+      bio.value = draft.bio;
+
+      const preview = draft.photoFile
+        ? el('img', { class: 'photo-preview', src: URL.createObjectURL(draft.photoFile), alt: '' })
+        : el('div', { class: 'photo-empty', text: 'Add a photo' });
+
+      const file = el('input', {
+        type: 'file', accept: 'image/jpeg,image/png,image/webp',
+        onChange: (event) => {
+          const chosen = event.target.files?.[0];
+          if (!chosen) return;
+          if (chosen.size > 8 * 1024 * 1024) { toast('Photos up to 8MB'); return; }
+          draft.photoFile = chosen;
+          draft.displayName = name.value; draft.headline = headline.value; draft.bio = bio.value;
+          haptic(); render();
+        },
+      });
+      const picker = el('label', { class: 'file-trigger btn btn-outline btn-block' }, [
+        file, document.createTextNode(draft.photoFile ? 'Choose a different photo' : 'Choose a photo'),
+      ]);
+
+      const proceed = el('div');
+      const refresh = () => {
+        draft.displayName = name.value.trim();
+        proceed.replaceChildren(nav('Continue', () => draft.displayName.length > 0, () => {
+          draft.headline = headline.value.trim(); draft.bio = bio.value.trim();
+          step = 3; render();
+        }));
+      };
+      name.addEventListener('input', refresh);
+
+      wrap.replaceChildren(
+        dots(),
+        head('Introduce yourself', 'Only your name is required. A photo helps, a lot.'),
+        preview, picker,
+        el('div', { style: 'margin-top:1rem' }, [field('Name', name), field('Headline', headline), field('About you', bio)]),
+        proceed,
+      );
+      refresh();
+      return;
+    }
+
+    const locality = el('input', { type: 'text', maxlength: '80', placeholder: 'Town or city' });
+    locality.value = draft.locality;
+    const interests = el('input', { type: 'text', placeholder: 'hiking, films, cooking' });
+    interests.value = draft.interests;
+    const visible = el('input', { type: 'checkbox', checked: draft.visibility === 'discoverable' });
+    visible.addEventListener('change', () => { draft.visibility = visible.checked ? 'discoverable' : 'invisible'; haptic(); });
+
+    const error = el('p', { class: 'error-text', hidden: true });
+    const finish = el('button', {
+      class: 'btn btn-block', type: 'button', text: 'Start meeting people',
+      onClick: async () => {
+        finish.disabled = true; finish.textContent = 'Setting things up…'; error.hidden = true;
+        try {
+          let photoMediaId = null;
+          if (draft.photoFile) {
+            const form = new FormData();
+            form.append('file', draft.photoFile);
+            const res = await fetch('/api/media', { method: 'POST', body: form, credentials: 'same-origin' });
+            const payload = await res.json();
+            if (!res.ok) throw Object.assign(new Error('upload'), { code: payload.error });
+            photoMediaId = payload.id;
+          }
+          await api.put('/api/profiles', {
+            kind: draft.kind, displayName: draft.displayName,
+            headline: draft.headline || undefined, bio: draft.bio || undefined,
+            locality: locality.value.trim() || undefined,
+            interests: interests.value.split(',').map((i) => i.trim()).filter(Boolean).slice(0, 20),
+            visibility: draft.visibility, photoMediaId, modes: draft.modes,
+          });
+          await loadProfiles();
+          haptic([20, 40, 20]);
+          toast("You're all set");
+          location.hash = '#/discover';
+          route();
+        } catch (err) {
+          error.textContent = messageFor(err); error.hidden = false;
+          finish.disabled = false; finish.textContent = 'Start meeting people';
+        }
+      },
+    });
+
+    wrap.replaceChildren(
+      dots(),
+      head('Last bit', 'Both of these can be changed any time.'),
+      field('Where are you?', locality, 'Town or city only — never your exact location.'),
+      field('Interests', interests, 'Comma separated. Helps us pick who you meet.'),
+      card([el('div', { class: 'switch' }, [
+        visible,
+        el('div', { class: 'grow' }, [
+          el('div', { class: 'switch-label', text: 'Let people find me' }),
+          el('p', { class: 'hint', text: 'Off means you stay hidden and will not appear in anyone else’s cards. You can switch it on later.' }),
+        ]),
+      ])]),
+      error,
+      el('div', { style: 'margin-top:.8rem' }, [finish]),
+      el('button', {
+        class: 'btn btn-outline btn-block', type: 'button', style: 'margin-top:.5rem',
+        text: 'Back', onClick: () => { step = 2; render(); },
+      }),
+    );
+  }
+
+  render();
+  mount(wrap);
 }
 
 /* ---------------------------------------------------------------- privacy -- */
@@ -1006,10 +1222,10 @@ async function privacyView() {
   const { consents } = await api.get('/api/consents');
 
   mount(
-    el('h1', { text: 'Privacy' }),
+    el('h1', { text: 'Privacy & account' }),
     card([
-      el('h2', { text: 'Consent' }),
-      el('p', { text: 'Each is separate, off by default, and reversible.' }),
+      el('h2', { text: 'Your choices' }),
+      el('p', { text: 'Everything here is off until you say otherwise, and you can change your mind any time.' }),
       ...consents.map((c) => {
         const input = el('input', {
           type: 'checkbox',
@@ -1127,7 +1343,7 @@ async function route() {
 
   if (!state.user) {
     syncTabs(null);
-    view.replaceChildren(...authView().childNodes);
+    authView();
     return;
   }
 
@@ -1137,7 +1353,7 @@ async function route() {
       case 'chat': syncTabs('matches'); await chatView(parts[1]); break;
       case 'feed': syncTabs('feed'); await feedView(); break;
       case 'post': syncTabs('feed'); await composeView(parts[1] === 'reel' ? 'reel' : 'story'); break;
-      case 'privacy': syncTabs('privacy'); await privacyView(); break;
+      case 'privacy': syncTabs('profiles'); await privacyView(); break;
       case 'admin': syncTabs(null); await adminView(parts.slice(1)); return;
       case 'profiles':
         syncTabs('profiles');
@@ -1157,6 +1373,7 @@ async function route() {
     }
   } catch (err) {
     if (err.status === 401) { state.user = null; return route(); }
+    console.error('route failed', location.hash, err);
     mount(card([el('p', { class: 'error-text', text: messageFor(err) })]));
   }
 }

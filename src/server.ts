@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import Fastify from 'fastify';
 import helmet from '@fastify/helmet';
@@ -102,6 +103,22 @@ await app.register(whoamiRoutes);
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
+/**
+ * The service worker's cache name is stamped per process start rather than
+ * hand-bumped in the source. A forgotten bump meant a deploy could leave
+ * returning browsers on the previous shell for one extra load; now every
+ * deploy (or restart) yields a new SW byte-for-byte, which triggers install,
+ * precache and the controllerchange reload the client already handles.
+ */
+const BUILD_STAMP = Date.now().toString(36);
+const swSource = await readFile(join(publicDir, 'sw.js'), 'utf8');
+app.get('/sw.js', async (_request, reply) =>
+  reply
+    .type('application/javascript; charset=utf-8')
+    .header('Cache-Control', 'no-cache')
+    .send(swSource.replace(/const VERSION = '[^']*';/, `const VERSION = '${BUILD_STAMP}';`)),
+);
+
 await app.register(fastifyStatic, {
   root: publicDir,
   index: ['index.html'],
@@ -109,14 +126,16 @@ await app.register(fastifyStatic, {
   // it and set the header explicitly below.
   cacheControl: false,
   setHeaders(res, path) {
-    if (path.endsWith('/sw.js') || path.endsWith('.html')) {
-      // Must revalidate every load: a stale service worker or shell can pin
-      // users to an old app version indefinitely.
-      res.setHeader('Cache-Control', 'no-cache');
-    } else if (path.includes('/icons/')) {
+    if (path.includes('/icons/')) {
       res.setHeader('Cache-Control', 'public, max-age=604800');
     } else {
-      res.setHeader('Cache-Control', 'public, max-age=3600');
+      // Everything else revalidates on every load. With ETags that is a cheap
+      // 304, and it means a deploy reaches returning users immediately. The
+      // previous max-age=3600 let the browser — and the service worker's
+      // precache, which reads through the HTTP cache — hold old JS and CSS
+      // for an hour after a deploy while index.html was already new.
+      // Instant loads come from the service worker, not from the HTTP cache.
+      res.setHeader('Cache-Control', 'no-cache');
     }
   },
 });
