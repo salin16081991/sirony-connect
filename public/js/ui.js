@@ -10,6 +10,17 @@ export function el(tag, props = {}, children = []) {
     else if (key === 'html') node.innerHTML = value;
     else if (key.startsWith('on')) node.addEventListener(key.slice(2).toLowerCase(), value);
     else if (key === 'dataset') Object.assign(node.dataset, value);
+    else if (key === 'style') {
+      // The CSP is style-src 'self' with no 'unsafe-inline', which refuses a
+      // style *attribute* outright — every inline style passed here was being
+      // dropped silently (invisible avatars, missing card fallbacks). CSSOM
+      // assignment is permitted, so apply the declarations one by one.
+      for (const decl of String(value).split(';')) {
+        const i = decl.indexOf(':');
+        if (i < 0) continue;
+        node.style.setProperty(decl.slice(0, i).trim(), decl.slice(i + 1).trim());
+      }
+    }
     else node.setAttribute(key, value === true ? '' : String(value));
   }
   for (const child of [].concat(children)) {
