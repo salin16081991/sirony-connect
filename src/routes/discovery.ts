@@ -3,8 +3,11 @@ import { pool } from '../db.js';
 import { requireAuth } from '../lib/auth-guard.js';
 import { signMediaToken } from '../lib/media-store.js';
 
-/** Free tier: a small number of curated introductions, not an infinite deck. */
-const DAILY_INTRODUCTIONS = 5;
+/**
+ * Curated, not infinite: the deck still ends. Twenty is enough to feel like a
+ * real session of swiping; five felt like the app was withholding.
+ */
+const DAILY_INTRODUCTIONS = 20;
 
 /**
  * Candidate selection (PRD §5.1). Every clause here is a product requirement:

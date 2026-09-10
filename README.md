@@ -198,5 +198,5 @@ The image never needs to be published for this route.
    key management before launch. Do not describe it to users as audited.
 3. **No ID verification.** The `verifications` table and state machine exist,
    but no provider is wired up.
-4. `DAILY_INTRODUCTIONS` is 5 (`src/routes/discovery.ts`), which is thin for a
-   swipe interface. Raise it once there is local density.
+4. `DAILY_INTRODUCTIONS` is 20 (`src/routes/discovery.ts`). The deck still
+   ends each day by design; tune the number to local density.
